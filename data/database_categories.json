@@ -1,0 +1,51 @@
+[
+  {
+    "id": "cat-1",
+    "name": "Smart IoT RO",
+    "description": "Wi-Fi & Bluetooth connected smart purifiers with live TDS monitoring",
+    "icon": "Cpu",
+    "createdAt": "2026-09-30"
+  },
+  {
+    "id": "cat-2",
+    "name": "Alkaline & Mineral RO",
+    "description": "Multi-stage purifiers with active Copper, Zinc & pH booster technology",
+    "icon": "Droplets",
+    "createdAt": "2026-09-30"
+  },
+  {
+    "id": "cat-3",
+    "name": "Under-Sink Compact RO",
+    "description": "Space-saving concealed hydro-filtration units with dedicated faucets",
+    "icon": "Box",
+    "createdAt": "2026-09-30"
+  },
+  {
+    "id": "cat-4",
+    "name": "Commercial RO Plants",
+    "description": "High LPH multi-membrane filtration systems for schools, cafes & offices",
+    "icon": "Building2",
+    "createdAt": "2026-09-30"
+  },
+  {
+    "id": "cat-5",
+    "name": "UV + UF Purifiers",
+    "description": "Zero-wastage non-RO ultraviolet and ultrafiltration systems for low TDS water",
+    "icon": "ShieldCheck",
+    "createdAt": "2026-09-30"
+  },
+  {
+    "id": "cat-bulk-1790754604363-1",
+    "name": "Smart IoT RO test",
+    "description": "Auto-created during bulk upload",
+    "icon": "Box",
+    "createdAt": "2026-09-30"
+  },
+  {
+    "id": "cat-1790760006327",
+    "name": "Test RO Category",
+    "description": "Test RO Category  Description",
+    "icon": "Box",
+    "createdAt": "2026-09-30"
+  }
+]

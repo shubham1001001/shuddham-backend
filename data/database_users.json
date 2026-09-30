@@ -1,0 +1,39 @@
+[
+  {
+    "id": "usr-superadmin",
+    "fullName": "Super Admin",
+    "phone": "9800011100",
+    "email": "superadmin@gmail.com",
+    "password": "123456",
+    "city": "HQ Executive Office",
+    "role": "Super Admin",
+    "isProvisioned": false,
+    "createdAt": "2026-08-01T09:00:00.000Z"
+  },
+  {
+    "id": "usr-1790662711984",
+    "fullName": "test admin",
+    "phone": "7828790027",
+    "email": "testadmin@gmail.com",
+    "password": "123456",
+    "city": "Indore , Madhypradesh",
+    "role": "Admin",
+    "isProvisioned": true,
+    "createdAt": "2026-09-29T06:18:31.984Z",
+    "name": "test admin",
+    "location": "Indore , Madhypradesh",
+    "status": "Active",
+    "updatedAt": "2026-09-29T09:50:06.866Z"
+  },
+  {
+    "id": "usr-1790662711001",
+    "fullName": "admin",
+    "phone": "7828790027",
+    "email": "admin@gmail.com",
+    "password": "123456",
+    "city": "Green Valley Hub, Sector 21",
+    "role": "Admin",
+    "isProvisioned": true,
+    "createdAt": "2026-09-29T06:18:00.000Z"
+  }
+]
