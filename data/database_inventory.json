@@ -11,7 +11,7 @@
     "sellingPrice": 5000,
     "location": "Warehouse Bay 1",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-29T18:30:00.000Z",
+    "lastRestocked": "2026-09-27T18:30:00.000Z",
     "availableSerials": [
       "Test-RO-104",
       "Test-RO-105"
@@ -61,7 +61,7 @@
       }
     ],
     "createdAt": "2026-09-30T09:26:34.000Z",
-    "updatedAt": "2026-09-30T09:31:56.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-1790748264381-1",
@@ -75,7 +75,7 @@
     "sellingPrice": 15999,
     "location": "Warehouse Bay 1",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [
       "RO-001",
       "RO-002",
@@ -83,7 +83,7 @@
     ],
     "assignments": [],
     "createdAt": "2026-09-30T09:00:17.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-1790748264382-2",
@@ -97,7 +97,7 @@
     "sellingPrice": 18999,
     "location": "Warehouse Bay 2",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [
       "ALK-101",
       "ALK-102",
@@ -105,7 +105,7 @@
     ],
     "assignments": [],
     "createdAt": "2026-09-30T09:00:17.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-1790754604364-1",
@@ -119,14 +119,14 @@
     "sellingPrice": 15999,
     "location": "Warehouse Bay 1",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [
       "RO-03",
       "Ro-1023"
     ],
     "assignments": [],
     "createdAt": "2026-09-30T09:00:17.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-1",
@@ -140,7 +140,7 @@
     "sellingPrice": 15999,
     "location": "Depot Bay A - IoT Devices",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-25T18:30:00.000Z",
+    "lastRestocked": "2026-09-23T18:30:00.000Z",
     "availableSerials": [
       "SHU-IOT-1002",
       "SHU-IOT-1003",
@@ -150,7 +150,7 @@
     ],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-2",
@@ -164,7 +164,7 @@
     "sellingPrice": 13499,
     "location": "Depot Bay B - Residential",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-25T18:30:00.000Z",
+    "lastRestocked": "2026-09-23T18:30:00.000Z",
     "availableSerials": [
       "SHU-ALK-2001",
       "SHU-ALK-2002",
@@ -173,7 +173,7 @@
     ],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-3",
@@ -187,7 +187,7 @@
     "sellingPrice": 17999,
     "location": "Depot Bay C - Premium",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-25T18:30:00.000Z",
+    "lastRestocked": "2026-09-23T18:30:00.000Z",
     "availableSerials": [
       "SHU-SNK-3001",
       "SHU-SNK-3002",
@@ -195,7 +195,7 @@
     ],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-4",
@@ -209,7 +209,7 @@
     "sellingPrice": 38500,
     "location": "Commercial Floor D",
     "supplier": "Shuddham Industrial Works",
-    "lastRestocked": "2026-09-25T18:30:00.000Z",
+    "lastRestocked": "2026-09-23T18:30:00.000Z",
     "availableSerials": [
       "SHU-COM-5002"
     ],
@@ -230,7 +230,7 @@
       }
     ],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-5",
@@ -244,11 +244,11 @@
     "sellingPrice": 22999,
     "location": "Depot Bay A - IoT Devices",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-6",
@@ -262,11 +262,11 @@
     "sellingPrice": 12499,
     "location": "Depot Bay B - Residential",
     "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-7",
@@ -280,11 +280,11 @@
     "sellingPrice": 7999,
     "location": "Depot Bay E - Gravity/UV",
     "supplier": "Shuddham Direct",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   },
   {
     "id": "inv-8",
@@ -298,10 +298,10 @@
     "sellingPrice": 62000,
     "location": "Commercial Floor D",
     "supplier": "Shuddham Industrial Works",
-    "lastRestocked": "2026-09-26T18:30:00.000Z",
+    "lastRestocked": "2026-09-24T18:30:00.000Z",
     "availableSerials": [],
     "assignments": [],
     "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T09:16:43.000Z"
+    "updatedAt": "2026-09-30T10:46:49.000Z"
   }
 ]
