@@ -13,15 +13,15 @@ const INVENTORY_FILE = path.join(DATA_DIR, 'database_inventory.json');
 const CATEGORIES_FILE = path.join(DATA_DIR, 'database_categories.json');
 
 export const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'shuddham_db',
+  host: (process.env.DB_HOST || 'localhost').trim(),
+  user: (process.env.DB_USER || 'root').trim(),
+  password: (process.env.DB_PASSWORD || '').trim(),
+  database: (process.env.DB_NAME || 'shuddham_db').trim(),
   port: Number(process.env.DB_PORT) || 3306,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  ...(process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') ? {
+  ...(process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || (process.env.DB_HOST && process.env.DB_HOST.trim() !== 'localhost' && process.env.DB_HOST.trim() !== '127.0.0.1') ? {
     ssl: {
       minVersion: 'TLSv1.2',
       rejectUnauthorized: true
