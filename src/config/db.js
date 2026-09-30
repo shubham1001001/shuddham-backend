@@ -24,13 +24,14 @@ export const dbConfig = {
   ...(process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') ? {
     ssl: {
       minVersion: 'TLSv1.2',
-      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+      rejectUnauthorized: true
     }
   } : {})
 };
 
 let pool = null;
 let isConnected = false;
+let lastDbError = null;
 
 /**
  * Initialize MySQL Connection Pool, Auto-Create Schema & Sync Data
@@ -245,10 +246,12 @@ export async function initDatabase() {
 
     connection.release();
     isConnected = true;
+    lastDbError = null;
     console.log('[MySQL Database] Schema verified & fully synced with live data!');
     return true;
   } catch (error) {
     isConnected = false;
+    lastDbError = error.message;
     console.warn(`[MySQL Database] Note: MySQL not reachable (${error.message}). Running with resilient fallback layer.`);
     return false;
   }
@@ -261,7 +264,7 @@ export async function query(sql, params = []) {
   if (!isConnected || !pool) {
     throw new Error('MySQL connection pool not active');
   }
-  const [rows] = await pool.execute(sql, params);
+  const [rows] = await pool.query(sql, params);
   return rows;
 }
 
@@ -269,9 +272,20 @@ export function isMySQLActive() {
   return isConnected;
 }
 
+export function getDbStatus() {
+  return {
+    isConnected,
+    host: dbConfig.host,
+    database: dbConfig.database,
+    port: dbConfig.port,
+    error: lastDbError
+  };
+}
+
 export default {
   initDatabase,
   query,
   isMySQLActive,
+  getDbStatus,
   dbConfig
 };

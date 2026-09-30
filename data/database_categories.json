@@ -40,12 +40,5 @@
     "description": "Auto-created during bulk upload",
     "icon": "Box",
     "createdAt": "2026-09-30"
-  },
-  {
-    "id": "cat-1790760006327",
-    "name": "Test RO Category",
-    "description": "Test RO Category  Description",
-    "icon": "Box",
-    "createdAt": "2026-09-30"
   }
 ]

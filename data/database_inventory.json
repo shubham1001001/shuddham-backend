@@ -1,91 +1,5 @@
 [
   {
-    "id": "inv-1790760394108",
-    "sku": "SHU-RO-4107",
-    "name": "Test RO Device",
-    "category": "Smart IoT RO",
-    "stockQuantity": 2,
-    "minThreshold": 5,
-    "unit": "Units",
-    "costPrice": 2000,
-    "sellingPrice": 5000,
-    "location": "Warehouse Bay 1",
-    "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-27T18:30:00.000Z",
-    "availableSerials": [
-      "Test-RO-104",
-      "Test-RO-105"
-    ],
-    "assignments": [
-      {
-        "id": "asgn-1790760489074-0-125",
-        "adminId": "usr-1790662711984",
-        "adminEmail": "testadmin@gmail.com",
-        "adminName": "test admin",
-        "quantity": 1,
-        "serialNumber": "Test-RO-101",
-        "customerName": "",
-        "customerPhone": "",
-        "installationAddress": "",
-        "note": "New RO installation & field deployment",
-        "assignedDate": "2026-09-30T09:28:09.074Z",
-        "status": "Assigned"
-      },
-      {
-        "id": "asgn-1790760489074-1-106",
-        "adminId": "usr-1790662711984",
-        "adminEmail": "testadmin@gmail.com",
-        "adminName": "test admin",
-        "quantity": 1,
-        "serialNumber": "Test-RO-102",
-        "customerName": "",
-        "customerPhone": "",
-        "installationAddress": "",
-        "note": "New RO installation & field deployment",
-        "assignedDate": "2026-09-30T09:28:09.074Z",
-        "status": "Assigned"
-      },
-      {
-        "id": "asgn-1790760529552-0-787",
-        "adminId": "usr-admin",
-        "adminEmail": "admin@gmail.com",
-        "adminName": "admin",
-        "quantity": 1,
-        "serialNumber": "Test-RO-103",
-        "customerName": "",
-        "customerPhone": "",
-        "installationAddress": "",
-        "note": "New RO installation & field deployment",
-        "assignedDate": "2026-09-30T09:28:49.552Z",
-        "status": "Assigned"
-      }
-    ],
-    "createdAt": "2026-09-30T09:26:34.000Z",
-    "updatedAt": "2026-09-30T10:46:49.000Z"
-  },
-  {
-    "id": "inv-1790748264381-1",
-    "sku": "SHU-RO-001",
-    "name": "Shuddham Smart RO Pro 10L",
-    "category": "Smart IoT RO",
-    "stockQuantity": 3,
-    "minThreshold": 5,
-    "unit": "Units",
-    "costPrice": 8500,
-    "sellingPrice": 15999,
-    "location": "Warehouse Bay 1",
-    "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-24T18:30:00.000Z",
-    "availableSerials": [
-      "RO-001",
-      "RO-002",
-      "RO-003"
-    ],
-    "assignments": [],
-    "createdAt": "2026-09-30T09:00:17.000Z",
-    "updatedAt": "2026-09-30T10:46:49.000Z"
-  },
-  {
     "id": "inv-1790748264382-2",
     "sku": "SHU-ALK-002",
     "name": "Shuddham Alkaline Mineral RO",
@@ -102,27 +16,6 @@
       "ALK-101",
       "ALK-102",
       "ro-298"
-    ],
-    "assignments": [],
-    "createdAt": "2026-09-30T09:00:17.000Z",
-    "updatedAt": "2026-09-30T10:46:49.000Z"
-  },
-  {
-    "id": "inv-1790754604364-1",
-    "sku": "SHU-RO-003",
-    "name": "Shuddham Smart RO Pro 10L",
-    "category": "Smart IoT RO test",
-    "stockQuantity": 2,
-    "minThreshold": 5,
-    "unit": "Units",
-    "costPrice": 8599,
-    "sellingPrice": 15999,
-    "location": "Warehouse Bay 1",
-    "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-24T18:30:00.000Z",
-    "availableSerials": [
-      "RO-03",
-      "Ro-1023"
     ],
     "assignments": [],
     "createdAt": "2026-09-30T09:00:17.000Z",
