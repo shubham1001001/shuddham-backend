@@ -20,7 +20,13 @@ export const dbConfig = {
   port: Number(process.env.DB_PORT) || 3306,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  ...(process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1') ? {
+    ssl: {
+      minVersion: 'TLSv1.2',
+      rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+    }
+  } : {})
 };
 
 let pool = null;
@@ -31,16 +37,21 @@ let isConnected = false;
  */
 export async function initDatabase() {
   try {
-    // 1. First connect without database to ensure database exists
-    const rootConnection = await mysql.createConnection({
-      host: dbConfig.host,
-      user: dbConfig.user,
-      password: dbConfig.password,
-      port: dbConfig.port
-    });
-
-    await rootConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
-    await rootConnection.end();
+    // 1. If running locally or as root, try ensuring database exists
+    if (!process.env.DB_HOST || process.env.DB_HOST === 'localhost' || process.env.DB_HOST === '127.0.0.1') {
+      try {
+        const rootConnection = await mysql.createConnection({
+          host: dbConfig.host,
+          user: dbConfig.user,
+          password: dbConfig.password,
+          port: dbConfig.port
+        });
+        await rootConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
+        await rootConnection.end();
+      } catch (err) {
+        // Ignore root create database errors on non-root or cloud environments
+      }
+    }
 
     // 2. Initialize connection pool to the database
     pool = mysql.createPool(dbConfig);
