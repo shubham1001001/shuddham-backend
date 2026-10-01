@@ -599,16 +599,84 @@ export const verifyOtp = (req, res) => {
 };
 
 /**
- * @route   POST /api/auth/forgot-password
+ * @route   POST /api/auth/forgot-password & /api/auth/reset-password
+ * @desc    Reset password by verifying matching registered phone & email
+ * @access  Public
  */
-export const forgotPassword = (req, res) => {
+export const forgotPassword = async (req, res) => {
   try {
-    const { phoneOrEmail } = req.body;
+    const { phone, email, phoneOrEmail, newPassword } = req.body;
+    const targetPhone = normalizePhone(phone || (!phoneOrEmail?.includes('@') ? phoneOrEmail : ''));
+    const targetEmail = (email || (phoneOrEmail?.includes('@') ? phoneOrEmail : '') || '').trim().toLowerCase();
+
+    if (!targetPhone || !targetEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide both your registered Mobile Number and Email ID to verify your identity.'
+      });
+    }
+
+    if (!newPassword || newPassword.trim().length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long.'
+      });
+    }
+
+    let user = null;
+
+    // 1. Search in MySQL
+    if (isMySQLActive()) {
+      try {
+        const rows = await query(
+          'SELECT * FROM users WHERE (phone = ? OR phone LIKE ?) AND LOWER(email) = ? LIMIT 1',
+          [targetPhone, `%${targetPhone}`, targetEmail]
+        );
+        if (rows && rows.length > 0) {
+          user = rows[0];
+        }
+      } catch (e) {
+        console.warn('[AuthController] MySQL lookup during forgotPassword:', e.message);
+      }
+    }
+
+    // 2. Fallback to local persistent database
+    if (!user) {
+      const allUsers = getAllUsers();
+      user = allUsers.find(u => {
+        const uPhone = normalizePhone(u.phone);
+        const uEmail = (u.email || '').trim().toLowerCase();
+        return uPhone === targetPhone && uEmail === targetEmail;
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found matching this Phone Number and Email ID. Please verify your details.'
+      });
+    }
+
+    // 3. Update password in MySQL
+    if (isMySQLActive()) {
+      try {
+        await query('UPDATE users SET password = ? WHERE id = ?', [newPassword.trim(), user.id]);
+      } catch (e) {
+        console.warn('[AuthController] MySQL password update error:', e.message);
+      }
+    }
+
+    // 4. Update in persistent store
+    await updateUserInDatabase(user.id, { password: newPassword.trim() });
+
+    console.log(`[AuthController] Password successfully reset for user ${user.id} (${targetPhone})`);
+
     return res.status(200).json({
       success: true,
-      message: `Password reset instructions sent to ${phoneOrEmail}. Default password is 123456.`
+      message: 'Password reset successfully! You can now sign in with your new password.'
     });
   } catch (error) {
+    console.error('[AuthController] forgotPassword error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

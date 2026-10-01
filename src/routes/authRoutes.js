@@ -36,6 +36,7 @@ router.post('/create-user', createUser);
 router.post('/send-otp', sendOtp);
 router.post('/verify-otp', verifyOtp);
 router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', forgotPassword);
 router.post('/change-password', changePassword);
 
 // Protected Profile Endpoints

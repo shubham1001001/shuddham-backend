@@ -1,0 +1,948 @@
+{
+	"info": {
+		"_postman_id": "shuddham-water-solutions-api-v1",
+		"name": "Shuddham Water Solutions API",
+		"description": "Comprehensive API collection for Shuddham Water Solutions Mobile App and Admin Portal.\n\nBackend Live URL: https://shuddham-backend.onrender.com/api\nLocal URL: http://127.0.0.1:5000/api",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://shuddham-backend.onrender.com/api",
+			"type": "string"
+		},
+		{
+			"key": "authToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "customerPhone",
+			"value": "9876543210",
+			"type": "string"
+		},
+		{
+			"key": "bookingId",
+			"value": "bkg_1",
+			"type": "string"
+		},
+		{
+			"key": "serviceId",
+			"value": "srv_1",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "💚 Health",
+			"item": [
+				{
+					"name": "Server Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Check backend status, database connection, and uptime."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📱 1. Customer Authentication (Mobile App)",
+			"item": [
+				{
+					"name": "1. Customer Signup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Ramesh Sharma\",\n  \"email\": \"ramesh@example.com\",\n  \"phone\": \"9876543210\",\n  \"password\": \"SecurePass123!\",\n  \"city\": \"Jabalpur\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/customer/signup",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "customer", "signup"]
+						},
+						"description": "Create a new customer account for the Flutter mobile app."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Customer Login (Auto-saves Token)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var data = pm.response.json();",
+									"    var token = data.token || (data.data && data.data.token);",
+									"    if (token) {",
+									"        pm.collectionVariables.set(\"authToken\", token);",
+									"        console.log(\"Saved authToken to collection variables:\", token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"identifier\": \"9876543210\",\n  \"password\": \"SecurePass123!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/customer/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "customer", "login"]
+						},
+						"description": "Customer login using phone number or email with password. Automatically stores the JWT into the collection's {{authToken}} variable."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Send OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"9876543210\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/send-otp",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "send-otp"]
+						},
+						"description": "Request an OTP verification code sent to customer phone number."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Verify OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"9876543210\",\n  \"otp\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/verify-otp",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "verify-otp"]
+						},
+						"description": "Verify code received on phone number."
+					},
+					"response": []
+				},
+				{
+					"name": "5. Get Profile (/auth/me)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "me"]
+						},
+						"description": "Get current logged-in user profile details."
+					},
+					"response": []
+				},
+				{
+					"name": "6. Update Profile (/auth/me)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Ramesh Sharma Updated\",\n  \"phone\": \"9876543210\",\n  \"city\": \"Jabalpur\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/me",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "me"]
+						},
+						"description": "Update current profile name, phone or city."
+					},
+					"response": []
+				},
+				{
+					"name": "7. Change Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"oldPassword\": \"SecurePass123!\",\n  \"newPassword\": \"NewSecurePass456!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/change-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "change-password"]
+						},
+						"description": "Change password by providing existing and new password."
+					},
+					"response": []
+				},
+				{
+					"name": "8. Forgot / Reset Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"9876543210\",\n  \"email\": \"ramesh@example.com\",\n  \"newPassword\": \"NewSecurePass456!\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/forgot-password",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "forgot-password"]
+						},
+						"description": "Reset customer password by verifying registered phone and email match, and saving new password into database."
+					},
+					"response": []
+				},
+				{
+					"name": "9. Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/logout",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "logout"]
+						},
+						"description": "Logout and terminate session."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔧 2. Services Catalog",
+			"item": [
+				{
+					"name": "1. Get All Services",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/services",
+							"host": ["{{baseUrl}}"],
+							"path": ["services"]
+						},
+						"description": "List all RO water purifier services (Filter replacement, Installation, Repair, AMC)."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Get Service by ID",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/services/{{serviceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["services", "{{serviceId}}"]
+						},
+						"description": "Get detailed info about a specific service."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Create Service (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Complete RO Membrane Service\",\n  \"category\": \"Maintenance\",\n  \"price\": 1499,\n  \"duration\": \"60 mins\",\n  \"description\": \"Full membrane deep cleaning, sediment filter change, and TDS calibration.\",\n  \"features\": [\"TDS Check\", \"Membrane Flush\", \"Leak Inspection\", \"30-Day Warranty\"],\n  \"rating\": 4.9,\n  \"reviewsCount\": 120\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/services",
+							"host": ["{{baseUrl}}"],
+							"path": ["services"]
+						},
+						"description": "Create a new service offering in catalog."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Update Service (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Complete RO Membrane Service Pro\",\n  \"price\": 1599,\n  \"duration\": \"75 mins\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/services/{{serviceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["services", "{{serviceId}}"]
+						},
+						"description": "Update service details by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "5. Delete Service (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/services/{{serviceId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["services", "{{serviceId}}"]
+						},
+						"description": "Delete a service by ID."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📅 3. Bookings (Mobile App & Admin)",
+			"item": [
+				{
+					"name": "1. Create New Booking (Mobile App)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200 || pm.response.code === 201) {",
+									"    var data = pm.response.json();",
+									"    var id = data.id || (data.data && data.data.id) || (data.booking && data.booking.id);",
+									"    if (id) {",
+									"        pm.collectionVariables.set(\"bookingId\", id);",
+									"        console.log(\"Saved bookingId:\", id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"serviceId\": \"srv_membrane_01\",\n  \"serviceName\": \"RO Membrane Replacement & Tune-up\",\n  \"category\": \"Service\",\n  \"price\": 1299,\n  \"date\": \"2026-10-05\",\n  \"timeSlot\": \"10:00 AM - 12:00 PM\",\n  \"customerName\": \"Ramesh Sharma\",\n  \"customerPhone\": \"9876543210\",\n  \"customerEmail\": \"ramesh@example.com\",\n  \"address\": \"Flat 402, Ganga Heights, Napier Town, Jabalpur\",\n  \"notes\": \"Water taste is slightly salty, please check TDS.\",\n  \"paymentMethod\": \"Cash after Service\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings"]
+						},
+						"description": "Create a service booking directly from the mobile app."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Get My Bookings (Filtered by Phone)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bookings?customerPhone={{customerPhone}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings"],
+							"query": [
+								{
+									"key": "customerPhone",
+									"value": "{{customerPhone}}"
+								}
+							]
+						},
+						"description": "Fetch all past and active bookings for the logged-in customer phone."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Get All Bookings (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings"]
+						},
+						"description": "Fetch all bookings across all customers."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Get Booking by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bookings/{{bookingId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings", "{{bookingId}}"]
+						},
+						"description": "Get detailed booking information by ID."
+					},
+					"response": []
+				},
+				{
+					"name": "5. Cancel Booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Plans changed, out of station.\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bookings/{{bookingId}}/cancel",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings", "{{bookingId}}", "cancel"]
+						},
+						"description": "Cancel a scheduled service booking."
+					},
+					"response": []
+				},
+				{
+					"name": "6. Reschedule Booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"date\": \"2026-10-08\",\n  \"timeSlot\": \"02:00 PM - 04:00 PM\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bookings/{{bookingId}}/reschedule",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings", "{{bookingId}}", "reschedule"]
+						},
+						"description": "Change booking date and time slot."
+					},
+					"response": []
+				},
+				{
+					"name": "7. Update Booking Status (Admin)",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"In Progress\",\n  \"technicianName\": \"Rahul Verma\",\n  \"technicianPhone\": \"9826012345\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/bookings/{{bookingId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings", "{{bookingId}}"]
+						},
+						"description": "Admin updates booking status (Pending, Confirmed, In Progress, Completed, Cancelled)."
+					},
+					"response": []
+				},
+				{
+					"name": "8. Delete Booking (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/bookings/{{bookingId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["bookings", "{{bookingId}}"]
+						},
+						"description": "Delete booking record."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🎧 4. Support Tickets (Mobile App & Admin)",
+			"item": [
+				{
+					"name": "1. Create Support Ticket (Mobile App)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"customerName\": \"Ramesh Sharma\",\n  \"customerPhone\": \"9876543210\",\n  \"subject\": \"Purifier Water Flow is Slow\",\n  \"message\": \"Since yesterday water output has decreased drastically.\",\n  \"category\": \"Water Flow\",\n  \"priority\": \"Medium\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/support/tickets",
+							"host": ["{{baseUrl}}"],
+							"path": ["support", "tickets"]
+						},
+						"description": "Customer submits a help desk ticket from the app."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Get Support Tickets (Customer / Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/support/tickets?customerPhone={{customerPhone}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["support", "tickets"],
+							"query": [
+								{
+									"key": "customerPhone",
+									"value": "{{customerPhone}}"
+								}
+							]
+						},
+						"description": "Retrieve support tickets (filter by customerPhone for user, or omit for all tickets)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🔬 5. Water Quality & Purifier Reports",
+			"item": [
+				{
+					"name": "1. Get My Water Reports",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/water-reports/my",
+							"host": ["{{baseUrl}}"],
+							"path": ["water-reports", "my"]
+						},
+						"description": "Get latest TDS, pH, hardness, and filter life diagnostics for customer's purifier."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Get Water Report by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/water-reports/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["water-reports", "1"]
+						},
+						"description": "Get single water quality test report by report ID."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "🛡️ 6. Admin Portal Authentication & Staff",
+			"item": [
+				{
+					"name": "1. Admin Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var data = pm.response.json();",
+									"    var token = data.token || (data.data && data.data.token);",
+									"    if (token) {",
+									"        pm.collectionVariables.set(\"authToken\", token);",
+									"        console.log(\"Saved admin authToken:\", token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"identifier\": \"admin@shuddham.com\",\n  \"password\": \"Admin@1234\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/admin/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "admin", "login"]
+						},
+						"description": "Authenticate an administrator or staff member."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Create New Admin / Staff",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Super Admin\",\n  \"email\": \"staff@shuddham.com\",\n  \"phone\": \"9826198765\",\n  \"password\": \"StaffPass123!\",\n  \"role\": \"admin\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/admin/create-admin",
+							"host": ["{{baseUrl}}"],
+							"path": ["auth", "admin", "create-admin"]
+						},
+						"description": "Create a new admin/manager in the system."
+					},
+					"response": []
+				},
+				{
+					"name": "3. List All Admins / Staff",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/admins",
+							"host": ["{{baseUrl}}"],
+							"path": ["admins"]
+						},
+						"description": "List all administrative users."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "👷 7. Technicians",
+			"item": [
+				{
+					"name": "1. List Technicians",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/technicians",
+							"host": ["{{baseUrl}}"],
+							"path": ["technicians"]
+						},
+						"description": "List all service technicians."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Get Technician by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/technicians/1",
+							"host": ["{{baseUrl}}"],
+							"path": ["technicians", "1"]
+						},
+						"description": "Get technician information."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Update Technician Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"Available\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/technicians/1/status",
+							"host": ["{{baseUrl}}"],
+							"path": ["technicians", "1", "status"]
+						},
+						"description": "Update technician status (Available, Busy, Offline)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📦 8. Inventory & Categories",
+			"item": [
+				{
+					"name": "1. List Inventory Items",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/inventory",
+							"host": ["{{baseUrl}}"],
+							"path": ["inventory"]
+						},
+						"description": "Get inventory stock list."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Inventory Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/inventory/stats",
+							"host": ["{{baseUrl}}"],
+							"path": ["inventory", "stats"]
+						},
+						"description": "Get total count, stock alert, and value metrics."
+					},
+					"response": []
+				},
+				{
+					"name": "3. List Categories",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/categories",
+							"host": ["{{baseUrl}}"],
+							"path": ["categories"]
+						},
+						"description": "Get all product / purifier categories."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "📊 9. Dashboard Stats",
+			"item": [
+				{
+					"name": "Get Dashboard Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/stats/dashboard",
+							"host": ["{{baseUrl}}"],
+							"path": ["stats", "dashboard"]
+						},
+						"description": "KPI counters, total services, bookings count, revenue summary."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
