@@ -1,25 +1,111 @@
 [
   {
-    "id": "inv-1790748264382-2",
-    "sku": "SHU-ALK-002",
-    "name": "Shuddham Alkaline Mineral RO",
-    "category": "Alkaline & Mineral RO",
-    "stockQuantity": 3,
+    "id": "inv-1790774023974",
+    "sku": "SHU-RO-3974",
+    "name": "Test RO Device",
+    "category": "Test Device Category",
+    "stockQuantity": 2,
+    "minThreshold": 5,
+    "unit": "Units",
+    "costPrice": 2500,
+    "sellingPrice": 5699,
+    "location": "Warehouse Bay 1",
+    "supplier": "Shuddham Manufacturing",
+    "lastRestocked": "2026-09-30",
+    "availableSerials": [
+      "Test-RO-102",
+      "Test-RO-103"
+    ],
+    "assignments": [
+      {
+        "id": "asgn-1790774052126-0-283",
+        "adminId": "usr-1790662711001",
+        "adminEmail": "admin@gmail.com",
+        "adminName": "admin",
+        "quantity": 1,
+        "serialNumber": "Test-RO-101",
+        "customerName": "",
+        "customerPhone": "",
+        "installationAddress": "",
+        "note": "New RO installation & field deployment",
+        "assignedDate": "2026-09-30T13:14:12.126Z",
+        "status": "Assigned"
+      }
+    ],
+    "createdAt": "2026-09-30T07:43:43.000Z",
+    "updatedAt": "2026-09-30T07:44:12.000Z"
+  },
+  {
+    "id": "inv-5",
+    "sku": "SHU-RO-HOTCOLD",
+    "name": "Shuddham Touch Hot & Cold Multi-Stage RO (10L)",
+    "category": "Smart IoT RO",
+    "stockQuantity": 8,
     "minThreshold": 3,
     "unit": "Units",
-    "costPrice": 10000,
-    "sellingPrice": 18999,
-    "location": "Warehouse Bay 2",
+    "costPrice": 12500,
+    "sellingPrice": 22999,
+    "location": "Depot Bay A - IoT Devices",
     "supplier": "Shuddham Manufacturing",
     "lastRestocked": "2026-09-22T18:30:00.000Z",
-    "availableSerials": [
-      "ALK-101",
-      "ALK-102",
-      "ro-298"
-    ],
+    "availableSerials": [],
     "assignments": [],
-    "createdAt": "2026-09-30T09:00:17.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
+    "createdAt": "2026-09-30T07:01:55.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
+  },
+  {
+    "id": "inv-6",
+    "sku": "SHU-RO-ECO06",
+    "name": "Shuddham EcoSaver Zero-Wastage RO Purifier (7L)",
+    "category": "Alkaline & Mineral RO",
+    "stockQuantity": 15,
+    "minThreshold": 5,
+    "unit": "Units",
+    "costPrice": 6800,
+    "sellingPrice": 12499,
+    "location": "Depot Bay B - Residential",
+    "supplier": "Shuddham Manufacturing",
+    "lastRestocked": "2026-09-22T18:30:00.000Z",
+    "availableSerials": [],
+    "assignments": [],
+    "createdAt": "2026-09-30T07:01:55.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
+  },
+  {
+    "id": "inv-7",
+    "sku": "SHU-UV-UF07",
+    "name": "Shuddham Smart UV+UF Pure Flow Purifier (Non-RO)",
+    "category": "UV + UF Purifiers",
+    "stockQuantity": 3,
+    "minThreshold": 5,
+    "unit": "Units",
+    "costPrice": 4200,
+    "sellingPrice": 7999,
+    "location": "Depot Bay E - Gravity/UV",
+    "supplier": "Shuddham Direct",
+    "lastRestocked": "2026-09-22T18:30:00.000Z",
+    "availableSerials": [],
+    "assignments": [],
+    "createdAt": "2026-09-30T07:01:55.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
+  },
+  {
+    "id": "inv-8",
+    "sku": "SHU-RO-COM100",
+    "name": "Shuddham Commercial 100 LPH Dual-Membrane RO Plant",
+    "category": "Commercial RO Plants",
+    "stockQuantity": 0,
+    "minThreshold": 2,
+    "unit": "Units",
+    "costPrice": 38000,
+    "sellingPrice": 62000,
+    "location": "Commercial Floor D",
+    "supplier": "Shuddham Industrial Works",
+    "lastRestocked": "2026-09-22T18:30:00.000Z",
+    "availableSerials": [],
+    "assignments": [],
+    "createdAt": "2026-09-30T07:01:55.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
   },
   {
     "id": "inv-1",
@@ -42,8 +128,30 @@
       "SHU-IOT-1001"
     ],
     "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
+    "createdAt": "2026-09-30T07:01:54.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
+  },
+  {
+    "id": "inv-1790748264382-2",
+    "sku": "SHU-ALK-002",
+    "name": "Shuddham Alkaline Mineral RO",
+    "category": "Alkaline & Mineral RO",
+    "stockQuantity": 3,
+    "minThreshold": 3,
+    "unit": "Units",
+    "costPrice": 10000,
+    "sellingPrice": 18999,
+    "location": "Warehouse Bay 2",
+    "supplier": "Shuddham Manufacturing",
+    "lastRestocked": "2026-09-22T18:30:00.000Z",
+    "availableSerials": [
+      "ALK-101",
+      "ALK-102",
+      "ro-298"
+    ],
+    "assignments": [],
+    "createdAt": "2026-09-30T07:01:54.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
   },
   {
     "id": "inv-2",
@@ -65,8 +173,8 @@
       "SHU-ALK-2004"
     ],
     "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
+    "createdAt": "2026-09-30T07:01:54.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
   },
   {
     "id": "inv-3",
@@ -87,8 +195,8 @@
       "SHU-SNK-3003"
     ],
     "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
+    "createdAt": "2026-09-30T07:01:54.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
   },
   {
     "id": "inv-4",
@@ -122,79 +230,7 @@
         "status": "Assigned"
       }
     ],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
-  },
-  {
-    "id": "inv-5",
-    "sku": "SHU-RO-HOTCOLD",
-    "name": "Shuddham Touch Hot & Cold Multi-Stage RO (10L)",
-    "category": "Smart IoT RO",
-    "stockQuantity": 8,
-    "minThreshold": 3,
-    "unit": "Units",
-    "costPrice": 12500,
-    "sellingPrice": 22999,
-    "location": "Depot Bay A - IoT Devices",
-    "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-22T18:30:00.000Z",
-    "availableSerials": [],
-    "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
-  },
-  {
-    "id": "inv-6",
-    "sku": "SHU-RO-ECO06",
-    "name": "Shuddham EcoSaver Zero-Wastage RO Purifier (7L)",
-    "category": "Alkaline & Mineral RO",
-    "stockQuantity": 15,
-    "minThreshold": 5,
-    "unit": "Units",
-    "costPrice": 6800,
-    "sellingPrice": 12499,
-    "location": "Depot Bay B - Residential",
-    "supplier": "Shuddham Manufacturing",
-    "lastRestocked": "2026-09-22T18:30:00.000Z",
-    "availableSerials": [],
-    "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
-  },
-  {
-    "id": "inv-7",
-    "sku": "SHU-UV-UF07",
-    "name": "Shuddham Smart UV+UF Pure Flow Purifier (Non-RO)",
-    "category": "UV + UF Purifiers",
-    "stockQuantity": 3,
-    "minThreshold": 5,
-    "unit": "Units",
-    "costPrice": 4200,
-    "sellingPrice": 7999,
-    "location": "Depot Bay E - Gravity/UV",
-    "supplier": "Shuddham Direct",
-    "lastRestocked": "2026-09-22T18:30:00.000Z",
-    "availableSerials": [],
-    "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
-  },
-  {
-    "id": "inv-8",
-    "sku": "SHU-RO-COM100",
-    "name": "Shuddham Commercial 100 LPH Dual-Membrane RO Plant",
-    "category": "Commercial RO Plants",
-    "stockQuantity": 0,
-    "minThreshold": 2,
-    "unit": "Units",
-    "costPrice": 38000,
-    "sellingPrice": 62000,
-    "location": "Commercial Floor D",
-    "supplier": "Shuddham Industrial Works",
-    "lastRestocked": "2026-09-22T18:30:00.000Z",
-    "availableSerials": [],
-    "assignments": [],
-    "createdAt": "2026-09-30T08:21:15.000Z",
-    "updatedAt": "2026-09-30T13:30:04.000Z"
+    "createdAt": "2026-09-30T07:01:54.000Z",
+    "updatedAt": "2026-10-01T03:32:10.000Z"
   }
 ]

@@ -169,8 +169,8 @@ export const createBooking = async (req, res) => {
     const timeSlot = req.body.timeSlot || req.body.slot;
     const amount = req.body.amount !== undefined ? req.body.amount : req.body.price;
 
-    if (!customerName || !customerPhone || !serviceTitle) {
-      return res.status(400).json({ success: false, message: 'Name, phone, and service are required' });
+    if (!customerName || !customerPhone || !serviceTitle || !address || !address.trim()) {
+      return res.status(400).json({ success: false, message: 'Customer name, phone, service title, and address are required' });
     }
 
     // Extract customer ID from auth header if present

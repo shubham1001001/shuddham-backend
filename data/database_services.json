@@ -1,16 +1,5 @@
 [
   {
-    "id": "srv-2",
-    "title": "Complete RO Purifier Servic",
-    "category": "RO Service",
-    "price": 499,
-    "duration": "45 Mins",
-    "description": "Full inspection, TDS check, sediment flushing, pre-filter replacement, and leakage testing.",
-    "featured": true,
-    "rating": 4.8,
-    "reviewCount": 540
-  },
-  {
     "id": "srv-3",
     "title": "Smart RO Device Installation & IoT Setup",
     "category": "Installation",

@@ -35,6 +35,13 @@
     "createdAt": "2026-09-30"
   },
   {
+    "id": "cat-1790773915020",
+    "name": "Test Device Category",
+    "description": "Test Device Category Description",
+    "icon": "Box",
+    "createdAt": "2026-09-30"
+  },
+  {
     "id": "cat-bulk-1790754604363-1",
     "name": "Smart IoT RO test",
     "description": "Auto-created during bulk upload",
