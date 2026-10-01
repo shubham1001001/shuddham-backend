@@ -244,6 +244,49 @@ export async function initDatabase() {
       }
     }
 
+    // 10. Auto-create 'bookings' table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`bookings\` (
+        \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
+        \`customer_name\` VARCHAR(150) NOT NULL,
+        \`customer_phone\` VARCHAR(30) NOT NULL,
+        \`service_title\` VARCHAR(200) NOT NULL,
+        \`address\` TEXT NOT NULL,
+        \`date\` VARCHAR(30) NOT NULL,
+        \`time_slot\` VARCHAR(60) NOT NULL,
+        \`status\` VARCHAR(50) NOT NULL DEFAULT 'Pending',
+        \`technician_id\` VARCHAR(50) DEFAULT NULL,
+        \`technician_name\` VARCHAR(100) DEFAULT 'Unassigned',
+        \`amount\` DECIMAL(10,2) DEFAULT 499.00,
+        \`payment_status\` VARCHAR(50) DEFAULT 'Pending',
+        \`tds_before\` INT DEFAULT NULL,
+        \`tds_after\` INT DEFAULT NULL,
+        \`cancellation_reason\` TEXT DEFAULT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_cust_phone\` (\`customer_phone\`),
+        INDEX \`idx_booking_status\` (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 11. Auto-create 'services' table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`services\` (
+        \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
+        \`title\` VARCHAR(200) NOT NULL,
+        \`category\` VARCHAR(100) NOT NULL,
+        \`price\` DECIMAL(10,2) NOT NULL,
+        \`duration\` VARCHAR(50) DEFAULT '1 Hour',
+        \`description\` TEXT DEFAULT NULL,
+        \`featured\` TINYINT(1) DEFAULT 0,
+        \`rating\` DECIMAL(3,2) DEFAULT 4.8,
+        \`review_count\` INT DEFAULT 100,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_serv_cat\` (\`category\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     connection.release();
     isConnected = true;
     lastDbError = null;
