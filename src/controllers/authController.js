@@ -267,6 +267,13 @@ export const createUser = async (req, res) => {
     const cleanPhone = normalizePhone(phone);
     const cleanEmail = email ? email.toString().trim().toLowerCase() : null;
 
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid email address is required for registration'
+      });
+    }
+
     if (!password || password.length < 6) {
       return res.status(400).json({
         success: false,
