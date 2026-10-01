@@ -35,5 +35,16 @@
     "role": "Admin",
     "isProvisioned": true,
     "createdAt": "2026-09-29T06:18:00.000Z"
+  },
+  {
+    "id": "usr-1790841741613",
+    "fullName": "test",
+    "phone": "9999999999",
+    "email": "test1@gmail.com",
+    "password": "123456",
+    "city": "Green Valley Hub",
+    "role": "Customer",
+    "isProvisioned": true,
+    "createdAt": "2026-10-01T08:02:21.613Z"
   }
 ]

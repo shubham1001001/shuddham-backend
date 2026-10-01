@@ -2,13 +2,30 @@ import { initialBookings, initialTechnicians } from '../data/mockData.js';
 
 let bookings = [...initialBookings];
 
-export const getBookings = (req, res) => {
-  const { status } = req.query;
-  if (status) {
-    const filtered = bookings.filter(b => b.status.toLowerCase() === status.toLowerCase());
-    return res.json({ success: true, count: filtered.length, data: filtered });
+// Helper to normalize phone numbers for searching
+const normalizePhone = (phoneStr) => {
+  if (!phoneStr) return '';
+  const digits = phoneStr.toString().replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.substring(2);
   }
-  res.json({ success: true, count: bookings.length, data: bookings });
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+};
+
+export const getBookings = (req, res) => {
+  const { status, customerPhone } = req.query;
+  let filtered = [...bookings];
+
+  if (status && status !== 'all') {
+    filtered = filtered.filter(b => b.status.toLowerCase() === status.toLowerCase());
+  }
+
+  if (customerPhone) {
+    const cleanPhone = normalizePhone(customerPhone);
+    filtered = filtered.filter(b => normalizePhone(b.customerPhone).includes(cleanPhone));
+  }
+
+  res.json({ success: true, count: filtered.length, data: filtered });
 };
 
 export const getBookingById = (req, res) => {
@@ -39,7 +56,8 @@ export const createBooking = (req, res) => {
     amount: amount || 499,
     paymentStatus: 'Pending',
     tdsBefore: null,
-    tdsAfter: null
+    tdsAfter: null,
+    createdAt: new Date().toISOString()
   };
 
   bookings.unshift(newBooking);
@@ -70,3 +88,47 @@ export const updateBookingStatus = (req, res) => {
 
   res.json({ success: true, message: 'Booking updated', data: booking });
 };
+
+export const cancelBooking = (req, res) => {
+  const { id } = req.params;
+  const { reason } = req.body || {};
+
+  const booking = bookings.find(b => b.id === id);
+  if (!booking) {
+    return res.status(404).json({ success: false, message: 'Booking not found' });
+  }
+
+  booking.status = 'Cancelled';
+  booking.cancellationReason = reason || 'Cancelled by customer';
+  booking.cancelledAt = new Date().toISOString();
+
+  res.json({ success: true, message: 'Booking cancelled successfully', data: booking });
+};
+
+export const rescheduleBooking = (req, res) => {
+  const { id } = req.params;
+  const { date, timeSlot } = req.body || {};
+
+  const booking = bookings.find(b => b.id === id);
+  if (!booking) {
+    return res.status(404).json({ success: false, message: 'Booking not found' });
+  }
+
+  if (date) booking.date = date;
+  if (timeSlot) booking.timeSlot = timeSlot;
+  booking.updatedAt = new Date().toISOString();
+
+  res.json({ success: true, message: 'Booking rescheduled successfully', data: booking });
+};
+
+export const deleteBooking = (req, res) => {
+  const { id } = req.params;
+  const index = bookings.findIndex(b => b.id === id);
+  if (index === -1) {
+    return res.status(404).json({ success: false, message: 'Booking not found' });
+  }
+
+  bookings.splice(index, 1);
+  res.json({ success: true, message: 'Booking deleted successfully' });
+};
+

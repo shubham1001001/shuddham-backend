@@ -54,73 +54,140 @@ const sanitizeUser = (user) => {
 };
 
 /**
- * @route   POST /api/auth/login
- * @desc    Sign in admin/staff with MySQL Database verification
+ * Helper to authenticate user by phone/email & password
+ */
+const authenticateUserRecord = async (phoneOrEmail) => {
+  const trimmedInput = (phoneOrEmail || '').toString().trim();
+  const isEmail = trimmedInput.includes('@');
+  const cleanPhone = normalizePhone(trimmedInput);
+
+  let searchInput = trimmedInput.toLowerCase();
+  if (searchInput === 'staff@gmai.com') searchInput = 'staff@gmail.com';
+
+  let user = null;
+
+  // 1. Check in MySQL Database first
+  if (isMySQLActive()) {
+    try {
+      const rows = await query(
+        'SELECT * FROM users WHERE LOWER(email) = ? OR phone = ? LIMIT 1',
+        [searchInput, cleanPhone || searchInput]
+      );
+      if (rows && rows.length > 0) {
+        user = rows[0];
+      }
+    } catch (dbErr) {
+      console.warn('[AuthController] MySQL query warning, using local fallback:', dbErr.message);
+    }
+  }
+
+  // 2. Memory / Persistent Store fallback (live read from database)
+  if (!user) {
+    const allUsers = getAllUsers();
+    user = allUsers.find(u => {
+      if (isEmail && u.email) {
+        return u.email.toLowerCase() === searchInput;
+      }
+      return u.phone === cleanPhone;
+    });
+  }
+
+  return user;
+};
+
+/**
+ * @route   POST /api/auth/customer/login (and /api/auth/login)
+ * @desc    Customer Sign In for Mobile App
  * @access  Public
  */
-export const login = async (req, res) => {
+export const customerLogin = async (req, res) => {
   try {
     const { phoneOrEmail, password } = req.body;
 
     if (!phoneOrEmail || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Mobile number/email and password are required'
+        message: 'Mobile number or email and password are required'
       });
     }
 
-    const trimmedInput = phoneOrEmail.toString().trim();
-    const isEmail = trimmedInput.includes('@');
-    const cleanPhone = normalizePhone(trimmedInput);
+    const user = await authenticateUserRecord(phoneOrEmail);
 
-    let searchInput = trimmedInput.toLowerCase();
-    if (searchInput === 'staff@gmai.com') searchInput = 'staff@gmail.com';
-
-    let user = null;
-
-    // 1. Check in MySQL Database first
-    if (isMySQLActive()) {
-      try {
-        const rows = await query(
-          'SELECT * FROM users WHERE LOWER(email) = ? OR phone = ? LIMIT 1',
-          [searchInput, cleanPhone || searchInput]
-        );
-        if (rows && rows.length > 0) {
-          user = rows[0];
-        }
-      } catch (dbErr) {
-        console.warn('[AuthController] MySQL query warning, using local fallback:', dbErr.message);
-      }
-    }
-
-    // 2. Memory / Persistent Store fallback (live read from database)
-    if (!user) {
-      const allUsers = getAllUsers();
-      user = allUsers.find(u => {
-        if (isEmail && u.email) {
-          return u.email.toLowerCase() === searchInput;
-        }
-        return u.phone === cleanPhone;
-      });
-    }
-
-    // 3. Strict User Verification: Reject any user not in database
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Account not found. Only administrators registered by Super Admin can access this portal.'
+        message: 'Account not found. Please check your credentials or tap Sign Up to create an account.'
       });
     }
 
-    // 4. Role Verification: Only Super Admin and Admin can access the Admin Panel
-    if (user.role !== 'Super Admin' && user.role !== 'Admin') {
+    if (user.password !== password) {
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect password. Please enter the correct password.'
+      });
+    }
+
+    const token = generateToken(user.id, user.role || 'Customer');
+
+    if (isMySQLActive() && user.id) {
+      try {
+        await query('UPDATE users SET last_login = NOW(), token = ? WHERE id = ?', [token, user.id]);
+      } catch (e) {}
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Signed in successfully',
+      data: {
+        user: sanitizeUser(user),
+        token
+      }
+    });
+  } catch (error) {
+    console.error('[AuthController] Customer Login Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during customer sign in',
+      error: error.message
+    });
+  }
+};
+
+export const login = customerLogin;
+
+/**
+ * @route   POST /api/auth/admin/login
+ * @desc    Strict Administrator / Staff Sign In for Admin Web Portal
+ * @access  Public
+ */
+export const adminLogin = async (req, res) => {
+  try {
+    const { phoneOrEmail, password } = req.body;
+
+    if (!phoneOrEmail || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Administrator email/phone and password are required'
+      });
+    }
+
+    const user = await authenticateUserRecord(phoneOrEmail);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Administrator account not found. Only registered administrators can access the Admin Panel.'
+      });
+    }
+
+    // Strict Role Verification for Admin Portal
+    if (user.role !== 'Super Admin' && user.role !== 'Admin' && user.role !== 'Staff') {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Only Super Admin and registered Administrators can access the Admin Panel.'
       });
     }
 
-    // 5. Strict Password Verification: Must match exact saved password
     if (user.password !== password) {
       return res.status(401).json({
         success: false,
@@ -130,7 +197,6 @@ export const login = async (req, res) => {
 
     const token = generateToken(user.id, user.role);
 
-    // Update MySQL last_login and active token
     if (isMySQLActive() && user.id) {
       try {
         await query('UPDATE users SET last_login = NOW(), token = ? WHERE id = ?', [token, user.id]);
@@ -139,17 +205,17 @@ export const login = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Signed in successfully via MySQL Auth Service',
+      message: 'Administrator signed in successfully',
       data: {
         user: sanitizeUser(user),
         token
       }
     });
   } catch (error) {
-    console.error('[AuthController] Login Error:', error);
+    console.error('[AuthController] Admin Login Error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Server error during sign in',
+      message: 'Server error during administrator sign in',
       error: error.message
     });
   }
@@ -234,7 +300,7 @@ export const createUser = async (req, res) => {
       } catch (e) {}
     }
 
-    const assignedRole = role === 'Super Admin' ? 'Super Admin' : 'Admin';
+    const assignedRole = role ? role : 'Customer';
 
     const newUser = {
       id: `usr-${Date.now()}`,
@@ -263,11 +329,14 @@ export const createUser = async (req, res) => {
     // Persist permanently in disk database and update active user list
     saveUserToDatabase(newUser);
 
+    const token = generateToken(newUser.id, newUser.role);
+
     return res.status(201).json({
       success: true,
-      message: `Administrator "${newUser.fullName}" provisioned & permanently stored in database!`,
+      message: `Account for "${newUser.fullName}" created successfully!`,
       data: {
-        user: sanitizeUser(newUser)
+        user: sanitizeUser(newUser),
+        token
       }
     });
   } catch (error) {
@@ -353,6 +422,142 @@ export const getMe = async (req, res) => {
     });
   }
 };
+
+/**
+ * @route   PUT /api/auth/me (and PATCH /api/auth/me)
+ * @desc    Update currently logged-in customer's profile (name, phone, email, city)
+ * @access  Protected
+ */
+export const updateMe = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    let userId = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        try {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          userId = payload.userId;
+        } catch (e) {}
+      }
+    }
+
+    if (!userId && req.body.userId) {
+      userId = req.body.userId;
+    }
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authorization token or userId required to update profile'
+      });
+    }
+
+    const { fullName, phone, email, city } = req.body;
+    const cleanPhone = phone ? normalizePhone(phone) : undefined;
+
+    let user = null;
+    const allUsers = getAllUsers();
+    user = allUsers.find(u => u.id === userId);
+
+    if (!user && isMySQLActive()) {
+      try {
+        const rows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [userId]);
+        if (rows && rows.length > 0) user = rows[0];
+      } catch (e) {}
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User profile not found'
+      });
+    }
+
+    if (fullName) {
+      user.fullName = fullName;
+      user.full_name = fullName;
+    }
+    if (cleanPhone) user.phone = cleanPhone;
+    if (email) user.email = email;
+    if (city) user.city = city;
+    user.updatedAt = new Date().toISOString();
+
+    saveUserToDatabase(user);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        user: sanitizeUser(user)
+      }
+    });
+  } catch (error) {
+    console.error('[AuthController] UpdateMe Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update user profile',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * @route   POST /api/auth/change-password
+ * @desc    Change user account password
+ * @access  Public / User
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const { userId, phoneOrEmail, oldPassword, newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters long'
+      });
+    }
+
+    let user = null;
+    if (userId) {
+      user = getUserById(userId);
+    } else if (phoneOrEmail) {
+      user = await authenticateUserRecord(phoneOrEmail);
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User account not found'
+      });
+    }
+
+    if (oldPassword && user.password !== oldPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password does not match'
+      });
+    }
+
+    user.password = newPassword;
+    saveUserToDatabase(user);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    console.error('[AuthController] ChangePassword Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to change password',
+      error: error.message
+    });
+  }
+};
+
 
 /**
  * @route   POST /api/auth/send-otp

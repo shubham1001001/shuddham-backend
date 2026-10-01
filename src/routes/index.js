@@ -7,6 +7,8 @@ import statsRoutes from './statsRoutes.js';
 import authRoutes from './authRoutes.js';
 import adminRoutes from './adminRoutes.js';
 import inventoryRoutes from './inventoryRoutes.js';
+import supportRoutes from './supportRoutes.js';
+import waterReportsRoutes from './waterReportsRoutes.js';
 import {
   getCategories,
   createCategory,
@@ -32,6 +34,8 @@ router.use('/technicians', techniciansRoutes);
 router.use('/stats', statsRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/categories', categoryRouter);
+router.use('/support', supportRoutes);
+router.use('/water-reports', waterReportsRoutes);
 
 export default router;
 
