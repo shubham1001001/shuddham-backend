@@ -2,18 +2,7 @@
 // Shuddham Water Solutions — Customer Support Tickets Controller
 // ─────────────────────────────────────────────────────────────────────────────
 
-let supportTickets = [
-  {
-    id: 'TCK-1001',
-    customerName: 'Pooja Agarwal',
-    customerPhone: '9800011122',
-    subject: 'Filter replacement inquiry',
-    message: 'Need to check RO membrane replacement due date and charges.',
-    status: 'Open',
-    priority: 'Normal',
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString()
-  }
-];
+let supportTickets = [];
 
 export const createSupportTicket = (req, res) => {
   const { customerName, customerPhone, subject, message, priority } = req.body;

@@ -69,7 +69,7 @@ export async function initDatabase() {
         \`email\` VARCHAR(150) NOT NULL UNIQUE,
         \`phone\` VARCHAR(20) DEFAULT NULL,
         \`password\` VARCHAR(255) NOT NULL,
-        \`role\` ENUM('Super Admin', 'Admin', 'Staff') NOT NULL DEFAULT 'Admin',
+        \`role\` VARCHAR(50) NOT NULL DEFAULT 'Customer',
         \`city\` VARCHAR(100) DEFAULT 'Operations HQ',
         \`token\` VARCHAR(500) DEFAULT NULL,
         \`is_active\` TINYINT(1) DEFAULT 1,
@@ -81,7 +81,14 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 5. Auto-seed required admin accounts (Super Admin, Admin)
+    // Ensure 'role' column allows 'Customer' and any dynamic role (migration from ENUM)
+    try {
+      await connection.query(`ALTER TABLE \`users\` MODIFY COLUMN \`role\` VARCHAR(50) NOT NULL DEFAULT 'Customer';`);
+    } catch (e) {
+      // Role column already modified or not supported
+    }
+
+    // 5. Auto-seed required admin accounts (Super Admin)
     const seedUsers = [
       ['usr-superadmin', 'Super Admin', 'superadmin@gmail.com', '9800011100', '123456', 'Super Admin', 'HQ Executive Office']
     ];
@@ -96,7 +103,7 @@ export async function initDatabase() {
       `, u);
     }
 
-    // 5.1 Auto-sync users from database_users.json (including created admins like testadmin@gmail.com)
+    // 5.1 Auto-sync users from database_users.json
     const USERS_FILE = path.join(DATA_DIR, 'database_users.json');
     if (fs.existsSync(USERS_FILE)) {
       try {
@@ -116,11 +123,11 @@ export async function initDatabase() {
                 \`is_active\` = VALUES(\`is_active\`);
             `, [
               u.id || `usr-${Date.now()}`,
-              u.fullName || u.name || u.full_name || 'Admin',
+              u.fullName || u.name || u.full_name || 'User',
               u.email ? u.email.trim().toLowerCase() : '',
               u.phone || '',
               u.password || '123456',
-              u.role || 'Admin',
+              u.role || 'Customer',
               u.city || u.location || 'Operations HQ',
               u.status === 'Inactive' ? 0 : 1
             ]);
@@ -248,6 +255,7 @@ export async function initDatabase() {
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`bookings\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
+        \`customer_id\` VARCHAR(50) DEFAULT NULL,
         \`customer_name\` VARCHAR(150) NOT NULL,
         \`customer_phone\` VARCHAR(30) NOT NULL,
         \`service_title\` VARCHAR(200) NOT NULL,
@@ -264,10 +272,17 @@ export async function initDatabase() {
         \`cancellation_reason\` TEXT DEFAULT NULL,
         \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_cust_id\` (\`customer_id\`),
         INDEX \`idx_cust_phone\` (\`customer_phone\`),
         INDEX \`idx_booking_status\` (\`status\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure customer_id column exists if table was previously created without it
+    try {
+      await connection.query(`ALTER TABLE \`bookings\` ADD COLUMN \`customer_id\` VARCHAR(50) DEFAULT NULL;`);
+    } catch (e) { /* column exists */ }
+
 
     // 11. Auto-create 'services' table
     await connection.query(`

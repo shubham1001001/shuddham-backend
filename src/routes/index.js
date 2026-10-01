@@ -9,6 +9,7 @@ import adminRoutes from './adminRoutes.js';
 import inventoryRoutes from './inventoryRoutes.js';
 import supportRoutes from './supportRoutes.js';
 import waterReportsRoutes from './waterReportsRoutes.js';
+import customerRoutes from './customerRoutes.js';
 import {
   getCategories,
   createCategory,
@@ -24,6 +25,7 @@ categoryRouter.post('/', createCategory);
 categoryRouter.put('/:id', updateCategory);
 categoryRouter.delete('/:id', deleteCategory);
 
+router.use('/customer', customerRoutes);
 router.use('/auth', authRoutes);
 router.use('/admins', adminRoutes);
 router.use('/admin', adminRoutes);

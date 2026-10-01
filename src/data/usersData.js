@@ -104,12 +104,12 @@ export function saveUserToDatabase(newUser) {
           is_active = VALUES(is_active)
       `, [
         newUser.id || `usr-${Date.now()}`,
-        newUser.fullName || newUser.name || newUser.full_name || 'Admin',
+        newUser.fullName || newUser.name || newUser.full_name || 'Customer',
         (newUser.email || '').trim().toLowerCase(),
         newUser.phone || '',
         newUser.password || '123456',
-        newUser.role || 'Admin',
-        newUser.city || newUser.location || 'Indore , Madhypradesh',
+        newUser.role || 'Customer',
+        newUser.city || newUser.location || 'Green Valley Hub',
         newUser.status === 'Inactive' ? 0 : 1
       ]).catch(e => console.warn('[UsersData] MySQL saveUser async error:', e.message));
     }

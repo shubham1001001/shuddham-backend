@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initialBookings, initialTechnicians } from '../data/mockData.js';
 import { isMySQLActive, query } from '../config/db.js';
+import { getAllUsers } from '../data/usersData.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,21 +56,31 @@ function saveBookingsDisk(data) {
 // Transform MySQL snake_case row to frontend camelCase booking model
 function mapRowToBooking(row) {
   if (!row) return null;
+  const serviceName = row.service_title || row.serviceTitle || row.serviceName || '';
+  const bookingDate = row.date || row.bookingDate || '';
+  const price = Number(row.amount) || Number(row.price) || 499;
+  const bookingStatus = row.status || row.bookingStatus || 'Pending';
+
   return {
     id: row.id,
-    customerName: row.customer_name || row.customerName,
-    customerPhone: row.customer_phone || row.customerPhone,
-    serviceTitle: row.service_title || row.serviceTitle,
-    address: row.address,
-    date: row.date,
-    timeSlot: row.time_slot || row.timeSlot,
-    status: row.status,
-    technicianId: row.technician_id || row.technicianId,
-    technicianName: row.technician_name || row.technicianName,
-    amount: Number(row.amount) || 499,
+    customerId: row.customer_id || row.customerId || null,
+    customerName: row.customer_name || row.customerName || '',
+    customerPhone: row.customer_phone || row.customerPhone || '',
+    serviceName: serviceName,
+    serviceTitle: serviceName,
+    bookingDate: bookingDate,
+    date: bookingDate,
+    price: price,
+    amount: price,
+    bookingStatus: bookingStatus,
+    status: bookingStatus,
+    address: row.address || '',
+    timeSlot: row.time_slot || row.timeSlot || '10:00 AM - 12:00 PM',
+    technicianId: row.technician_id || row.technicianId || null,
+    technicianName: row.technician_name || row.technicianName || 'Unassigned',
     paymentStatus: row.payment_status || row.paymentStatus || 'Pending',
-    tdsBefore: row.tds_before !== null ? Number(row.tds_before) : null,
-    tdsAfter: row.tds_after !== null ? Number(row.tds_after) : null,
+    tdsBefore: row.tds_before !== null && row.tds_before !== undefined ? Number(row.tds_before) : null,
+    tdsAfter: row.tds_after !== null && row.tds_after !== undefined ? Number(row.tds_after) : null,
     cancellationReason: row.cancellation_reason || row.cancellationReason || null,
     createdAt: row.created_at || row.createdAt || new Date().toISOString()
   };
@@ -99,7 +110,7 @@ export const getBookings = async (req, res) => {
         sql += ' ORDER BY created_at DESC';
 
         const rows = await query(sql, params);
-        if (rows && rows.length > 0) {
+        if (rows) {
           const mapped = rows.map(mapRowToBooking);
           return res.json({ success: true, count: mapped.length, data: mapped });
         }
@@ -150,13 +161,35 @@ export const getBookingById = async (req, res) => {
 
 export const createBooking = async (req, res) => {
   try {
-    const { customerName, customerPhone, serviceTitle, address, date, timeSlot, amount } = req.body;
+    const customerName = req.body.customerName || req.body.name;
+    const customerPhone = req.body.customerPhone || req.body.phone;
+    const serviceTitle = req.body.serviceTitle || req.body.serviceName;
+    const address = req.body.address;
+    const date = req.body.date || req.body.bookingDate;
+    const timeSlot = req.body.timeSlot || req.body.slot;
+    const amount = req.body.amount !== undefined ? req.body.amount : req.body.price;
+
     if (!customerName || !customerPhone || !serviceTitle) {
       return res.status(400).json({ success: false, message: 'Name, phone, and service are required' });
     }
 
+    // Extract customer ID from auth header if present
+    let customerId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const parts = token.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          customerId = payload.userId || payload.id || payload.sub || null;
+        }
+      } catch (e) {}
+    }
+
     const newBooking = {
       id: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
+      customerId: customerId,
       customerName,
       customerPhone,
       serviceTitle,
@@ -179,11 +212,12 @@ export const createBooking = async (req, res) => {
       try {
         await query(`
           INSERT INTO bookings (
-            id, customer_name, customer_phone, service_title, address, date, time_slot,
+            id, customer_id, customer_name, customer_phone, service_title, address, date, time_slot,
             status, technician_id, technician_name, amount, payment_status, tds_before, tds_after
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           newBooking.id,
+          newBooking.customerId,
           newBooking.customerName,
           newBooking.customerPhone,
           newBooking.serviceTitle,
@@ -340,4 +374,146 @@ export const deleteBooking = async (req, res) => {
   bookings.splice(index, 1);
   saveBookingsDisk(bookings);
   return res.json({ success: true, message: 'Booking deleted successfully' });
+};
+
+/**
+ * @route   GET /api/customer/bookings (also /api/bookings/my-bookings)
+ * @desc    Fetch only the authenticated customer's bookings using their JWT token
+ * @access  Private (Requires Bearer token, customer ID extracted from token)
+ */
+export const getCustomerBookings = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required. Missing or invalid Authorization header.'
+      });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token is required.'
+      });
+    }
+
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid session token format.'
+      });
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    } catch (parseErr) {
+      return res.status(401).json({
+        success: false,
+        message: 'Failed to decode authorization token payload.'
+      });
+    }
+
+    if (payload.expiresAt && Date.now() > payload.expiresAt) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session has expired. Please sign in again.'
+      });
+    }
+
+    const customerId = payload.userId || payload.id || payload.sub;
+    if (!customerId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized: No user identifier present in token.'
+      });
+    }
+
+    // Lookup customer profile from database to also match by their registered phone or email
+    let userRecord = null;
+    if (isMySQLActive()) {
+      try {
+        const rows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [customerId]);
+        if (rows && rows.length > 0) userRecord = rows[0];
+      } catch (e) {}
+    }
+    if (!userRecord) {
+      try {
+        const allUsers = getAllUsers();
+        userRecord = allUsers.find(u => u.id === customerId);
+      } catch (e) {}
+    }
+
+    const userPhone = userRecord ? normalizePhone(userRecord.phone) : '';
+    const userEmail = userRecord && userRecord.email ? userRecord.email.toLowerCase().trim() : '';
+
+    const { status } = req.query;
+
+    // 1. Fetch from MySQL if active
+    if (isMySQLActive()) {
+      try {
+        let sql = `
+          SELECT * FROM bookings 
+          WHERE (customer_id = ? 
+             OR (? != '' AND (customer_phone LIKE ? OR phone LIKE ?)))
+        `;
+        const params = [customerId, userPhone, `%${userPhone}%`, `%${userPhone}%`];
+
+        if (status && status !== 'all') {
+          sql += ' AND LOWER(status) = ?';
+          params.push(status.toLowerCase());
+        }
+
+        sql += ' ORDER BY created_at DESC';
+
+        const rows = await query(sql, params);
+        if (rows) {
+          const mapped = rows.map(mapRowToBooking);
+          return res.status(200).json({
+            success: true,
+            count: mapped.length,
+            customerId,
+            data: mapped
+          });
+        }
+      } catch (dbErr) {
+        console.warn('[Bookings Controller] MySQL getCustomerBookings warning:', dbErr.message);
+      }
+    }
+
+    // 2. Fetch from Disk / Memory Fallback
+    const bookings = loadBookingsDisk();
+    let filtered = bookings.filter(b => {
+      // Must match customerId or user phone or user email
+      const matchesId = b.customerId === customerId || b.customer_id === customerId;
+      const bPhone = normalizePhone(b.customerPhone || b.phone || '');
+      const matchesPhone = userPhone.length >= 7 && (bPhone.includes(userPhone) || userPhone.includes(bPhone));
+      const bEmail = (b.customerEmail || b.email || '').toLowerCase().trim();
+      const matchesEmail = userEmail.length > 3 && bEmail === userEmail;
+
+      return matchesId || matchesPhone || matchesEmail;
+    });
+
+    if (status && status !== 'all') {
+      filtered = filtered.filter(b => b.status && b.status.toLowerCase() === status.toLowerCase());
+    }
+
+    const formatted = filtered.map(b => mapRowToBooking(b));
+    return res.status(200).json({
+      success: true,
+      count: formatted.length,
+      customerId,
+      data: formatted
+    });
+  } catch (error) {
+    console.error('[Bookings Controller] getCustomerBookings error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve customer bookings',
+      error: error.message
+    });
+  }
 };

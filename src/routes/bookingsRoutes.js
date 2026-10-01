@@ -6,11 +6,13 @@ import {
   updateBookingStatus,
   cancelBooking,
   rescheduleBooking,
-  deleteBooking
+  deleteBooking,
+  getCustomerBookings
 } from '../controllers/bookingsController.js';
 
 const router = express.Router();
 
+router.get('/my-bookings', getCustomerBookings);
 router.get('/', getBookings);
 router.get('/:id', getBookingById);
 router.post('/', createBooking);

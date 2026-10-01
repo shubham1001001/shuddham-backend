@@ -437,7 +437,26 @@
 					"response": []
 				},
 				{
-					"name": "2. Get My Bookings (Filtered by Phone)",
+					"name": "2. Get Customer Bookings (via JWT Token)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/customer/bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["customer", "bookings"]
+						},
+						"description": "Fetch only the logged-in customer's bookings strictly using the customer ID decoded from the JWT token. No user_id or phone parameter required."
+					},
+					"response": []
+				},
+				{
+					"name": "2b. Get My Bookings (Filtered by Phone - Legacy)",
 					"request": {
 						"method": "GET",
 						"header": [
@@ -457,7 +476,7 @@
 								}
 							]
 						},
-						"description": "Fetch all past and active bookings for the logged-in customer phone."
+						"description": "Fetch bookings filtered by phone number (legacy approach)."
 					},
 					"response": []
 				},
