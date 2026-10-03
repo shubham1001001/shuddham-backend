@@ -4,7 +4,7 @@
     "fullName": "Super Admin",
     "phone": "9800011100",
     "email": "superadmin@gmail.com",
-    "password": "NewSecurePass123!",
+    "password": "123456",
     "city": "HQ Executive Office",
     "role": "Super Admin",
     "isProvisioned": false,
