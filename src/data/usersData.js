@@ -41,16 +41,7 @@ function loadUsersFromDisk() {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Keep Super Admin and all admins created by Super Admin (isProvisioned: true)
-      const sanitized = parsed.filter(u => 
-        u.isProvisioned === true || u.id === 'usr-superadmin'
-      );
-      if (sanitized.length !== parsed.length) {
-        fs.writeFileSync(DB_FILE, JSON.stringify(sanitized, null, 2), 'utf-8');
-        console.log(`[Database File] Purged unprovisioned demo accounts from ${DB_FILE}`);
-      }
-      console.log(`[Database File] Loaded ${sanitized.length} authorized users from persistent database`);
-      return sanitized;
+      return parsed;
     }
 
     return [...initialSeedUsers];
@@ -125,25 +116,33 @@ export function saveUserToDatabase(newUser) {
  * Query created administrators from MySQL (if active) or disk database
  */
 export async function getCreatedAdmins() {
-  // 1. If MySQL is active, retrieve all created Admins from MySQL database
+  // 1. If MySQL is active, retrieve all registered users from MySQL database
   if (isMySQLActive()) {
     try {
       const rows = await query(`
-        SELECT id, full_name, email, phone, role, city, created_at 
+        SELECT id, full_name, email, phone, role, city, is_active, created_at 
         FROM users 
-        WHERE role = 'Admin' AND id != 'usr-superadmin'
-        ORDER BY created_at DESC
+        ORDER BY 
+          CASE 
+            WHEN role = 'Super Admin' THEN 1 
+            WHEN role = 'Admin' THEN 2 
+            WHEN role = 'Staff' OR role = 'Technician' THEN 3 
+            ELSE 4 
+          END ASC, 
+          created_at DESC
       `);
       if (rows && rows.length > 0) {
         return rows.map(r => ({
           id: r.id,
           name: r.full_name,
+          fullName: r.full_name,
           email: r.email,
           phone: r.phone,
-          specialization: 'Administrator',
-          role: r.role,
+          specialization: r.role === 'Super Admin' ? 'Master Authority' : (r.role === 'Admin' ? 'Administrator' : (r.role === 'Customer' ? 'Registered Customer' : (r.role || 'Staff Member'))),
+          role: r.role || 'Customer',
           location: r.city || 'Operations HQ',
-          status: 'Active',
+          city: r.city || 'Operations HQ',
+          status: r.is_active === 0 ? 'Inactive' : 'Active',
           createdAt: r.created_at
         }));
       }
@@ -152,21 +151,18 @@ export async function getCreatedAdmins() {
     }
   }
 
-  // 2. Persistent file database store
+  // 2. Persistent file database store fallback
   const allUsers = loadUsersFromDisk();
-  const createdAdmins = allUsers.filter(u => 
-    (u.isProvisioned === true || u.id !== 'usr-superadmin') && 
-    (u.role === 'Admin')
-  );
-
-  return createdAdmins.map(u => ({
+  return allUsers.map(u => ({
     id: u.id,
-    name: u.fullName || u.full_name,
+    name: u.fullName || u.full_name || u.name,
+    fullName: u.fullName || u.full_name || u.name,
     email: u.email,
     phone: u.phone,
-    specialization: 'Administrator',
-    role: u.role,
-    location: u.city || 'Operations HQ',
+    specialization: u.role === 'Super Admin' ? 'Master Authority' : (u.role === 'Admin' ? 'Administrator' : (u.role === 'Customer' ? 'Registered Customer' : (u.role || 'Staff Member'))),
+    role: u.role || 'Customer',
+    location: u.city || u.location || 'Operations HQ',
+    city: u.city || u.location || 'Operations HQ',
     status: u.status || 'Active',
     createdAt: u.createdAt || u.created_at
   }));
