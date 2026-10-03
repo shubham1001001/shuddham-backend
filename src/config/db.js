@@ -63,13 +63,13 @@ export async function initDatabase() {
     const connection = await pool.getConnection();
     console.log(`[MySQL Database] Connected successfully to ${dbConfig.database} on ${dbConfig.host}:${dbConfig.port}`);
 
-    // 4. Auto-create 'users' table
+    // 4. Auto-create 'users' table with UNIQUE phone and email
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`users\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
         \`full_name\` VARCHAR(150) NOT NULL,
         \`email\` VARCHAR(150) NOT NULL UNIQUE,
-        \`phone\` VARCHAR(20) DEFAULT NULL,
+        \`phone\` VARCHAR(20) DEFAULT NULL UNIQUE,
         \`password\` VARCHAR(255) NOT NULL,
         \`role\` VARCHAR(50) NOT NULL DEFAULT 'Customer',
         \`city\` VARCHAR(100) DEFAULT 'Operations HQ',
@@ -82,6 +82,13 @@ export async function initDatabase() {
         INDEX \`idx_phone\` (\`phone\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure 'phone' column has a UNIQUE index
+    try {
+      await connection.query(`ALTER TABLE \`users\` ADD UNIQUE INDEX \`uq_phone\` (\`phone\`);`);
+    } catch (e) {
+      // Index already exists or not supported
+    }
 
     // Ensure 'role' column allows 'Customer' and any dynamic role (migration from ENUM)
     try {
@@ -105,7 +112,7 @@ export async function initDatabase() {
       `, u);
     }
 
-    // 5.1 Auto-sync users from database_users.json
+    // 5.1 Auto-sync users from database_users.json into MySQL
     const USERS_FILE = path.join(DATA_DIR, 'database_users.json');
     if (fs.existsSync(USERS_FILE)) {
       try {
@@ -138,6 +145,30 @@ export async function initDatabase() {
       } catch (err) {
         console.warn('[MySQL Database] Users sync note:', err.message);
       }
+    }
+
+    // 5.2 Auto-sync from MySQL back to database_users.json so local cache has all MySQL users
+    try {
+      const [allDbUsers] = await connection.query('SELECT * FROM users');
+      if (allDbUsers && allDbUsers.length > 0) {
+        const mappedUsers = allDbUsers.map(r => ({
+          id: r.id,
+          fullName: r.full_name,
+          name: r.full_name,
+          email: r.email,
+          phone: r.phone || '',
+          password: r.password,
+          city: r.city,
+          location: r.city,
+          role: r.role,
+          status: r.is_active ? 'Active' : 'Inactive',
+          createdAt: r.created_at,
+          updatedAt: r.updated_at
+        }));
+        fs.writeFileSync(USERS_FILE, JSON.stringify(mappedUsers, null, 2), 'utf-8');
+      }
+    } catch (syncErr) {
+      console.warn('[MySQL Database] Reverse users sync note:', syncErr.message);
     }
 
     // 6. Auto-create 'device_categories' table

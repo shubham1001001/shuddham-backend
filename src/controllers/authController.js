@@ -291,41 +291,58 @@ export const createUser = async (req, res) => {
       });
     }
 
-    // Check duplicate in memory / persistent store first
-    const allUsers = getAllUsers();
-    const existingInStore = allUsers.find(u => 
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      (cleanPhone && u.phone && normalizePhone(u.phone) === cleanPhone)
-    );
-    if (existingInStore) {
-      return res.status(409).json({
-        success: false,
-        message: 'An administrator or user with this email or mobile number already exists.'
-      });
-    }
-
-    // Check if email or phone already exists in MySQL
+    // 1. Strict Duplicate Check in MySQL Database first
     if (isMySQLActive()) {
       try {
-        if (cleanEmail) {
-          const existingEmail = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [cleanEmail]);
-          if (existingEmail && existingEmail.length > 0) {
-            return res.status(409).json({
-              success: false,
-              message: 'An account with this email address already exists.'
-            });
-          }
-        }
         if (cleanPhone) {
-          const existingPhone = await query('SELECT id FROM users WHERE phone = ? LIMIT 1', [cleanPhone]);
+          const existingPhone = await query(
+            `SELECT id, full_name, email, phone, role FROM users 
+             WHERE phone = ? 
+                OR phone = ? 
+                OR phone = ? 
+                OR phone = ? 
+                OR RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = ? 
+             LIMIT 1`,
+            [cleanPhone, '+91' + cleanPhone, '91' + cleanPhone, '+91 ' + cleanPhone, cleanPhone]
+          );
           if (existingPhone && existingPhone.length > 0) {
             return res.status(409).json({
               success: false,
-              message: `An account with mobile number +91 ${cleanPhone} already exists.`
+              message: `An account with mobile number +91 ${cleanPhone} is already registered. Please Sign In.`
             });
           }
         }
-      } catch (e) {}
+
+        if (cleanEmail) {
+          const existingEmail = await query('SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1', [cleanEmail]);
+          if (existingEmail && existingEmail.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message: 'An account with this email address is already registered. Please Sign In.'
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[AuthController] MySQL duplicate check warning:', dbErr.message);
+      }
+    }
+
+    // 2. Strict Duplicate Check in Memory / Persistent Disk Store
+    const allUsers = getAllUsers();
+    const existingPhoneInStore = allUsers.find(u => u.phone && normalizePhone(u.phone) === cleanPhone);
+    if (existingPhoneInStore) {
+      return res.status(409).json({
+        success: false,
+        message: `An account with mobile number +91 ${cleanPhone} is already registered. Please Sign In.`
+      });
+    }
+
+    const existingEmailInStore = allUsers.find(u => u.email && u.email.toLowerCase() === cleanEmail);
+    if (existingEmailInStore) {
+      return res.status(409).json({
+        success: false,
+        message: 'An account with this email address is already registered. Please Sign In.'
+      });
     }
 
     const assignedRole = role ? role : 'Customer';
@@ -350,6 +367,18 @@ export const createUser = async (req, res) => {
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `, [newUser.id, newUser.fullName, newUser.email, newUser.phone, newUser.password, newUser.role, newUser.city]);
       } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY' || (err.message && err.message.includes('Duplicate entry'))) {
+          if (err.message.includes('uq_phone') || err.message.includes(cleanPhone)) {
+            return res.status(409).json({
+              success: false,
+              message: `An account with mobile number +91 ${cleanPhone} is already registered. Please Sign In.`
+            });
+          }
+          return res.status(409).json({
+            success: false,
+            message: 'An account with this email address is already registered. Please Sign In.'
+          });
+        }
         console.warn('[AuthController] MySQL insert fallback:', err.message);
       }
     }
@@ -513,12 +542,64 @@ export const updateMe = async (req, res) => {
       });
     }
 
+    const cleanEmail = email ? email.toString().trim().toLowerCase() : undefined;
+
+    // Check duplicate phone if being updated
+    if (cleanPhone && cleanPhone !== normalizePhone(user.phone)) {
+      if (isMySQLActive()) {
+        try {
+          const rows = await query(`
+            SELECT id FROM users 
+            WHERE id != ? AND (
+              phone = ? OR phone = ? OR phone = ? OR phone = ? 
+              OR RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = ?
+            ) LIMIT 1
+          `, [user.id, cleanPhone, '+91' + cleanPhone, '91' + cleanPhone, '+91 ' + cleanPhone, cleanPhone]);
+          if (rows && rows.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message: `Mobile number +91 ${cleanPhone} is already registered to another account.`
+            });
+          }
+        } catch (e) {}
+      }
+      const phoneInStore = allUsers.find(u => u.id !== user.id && u.phone && normalizePhone(u.phone) === cleanPhone);
+      if (phoneInStore) {
+        return res.status(409).json({
+          success: false,
+          message: `Mobile number +91 ${cleanPhone} is already registered to another account.`
+        });
+      }
+    }
+
+    // Check duplicate email if being updated
+    if (cleanEmail && cleanEmail !== user.email?.toLowerCase()) {
+      if (isMySQLActive()) {
+        try {
+          const rows = await query('SELECT id FROM users WHERE id != ? AND LOWER(email) = ? LIMIT 1', [user.id, cleanEmail]);
+          if (rows && rows.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message: `Email address "${cleanEmail}" is already registered to another account.`
+            });
+          }
+        } catch (e) {}
+      }
+      const emailInStore = allUsers.find(u => u.id !== user.id && u.email && u.email.toLowerCase() === cleanEmail);
+      if (emailInStore) {
+        return res.status(409).json({
+          success: false,
+          message: `Email address "${cleanEmail}" is already registered to another account.`
+        });
+      }
+    }
+
     if (fullName) {
       user.fullName = fullName;
       user.full_name = fullName;
     }
     if (cleanPhone) user.phone = cleanPhone;
-    if (email) user.email = email;
+    if (cleanEmail) user.email = cleanEmail;
     if (city) user.city = city;
     user.updatedAt = new Date().toISOString();
 
@@ -854,11 +935,17 @@ export const updateUser = async (req, res) => {
       }
       if (isMySQLActive()) {
         try {
-          const rows = await query('SELECT id FROM users WHERE phone = ? AND id != ? LIMIT 1', [cleanPhone, id]);
+          const rows = await query(`
+            SELECT id FROM users 
+            WHERE id != ? AND (
+              phone = ? OR phone = ? OR phone = ? OR phone = ? 
+              OR RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = ?
+            ) LIMIT 1
+          `, [id, cleanPhone, '+91' + cleanPhone, '91' + cleanPhone, '+91 ' + cleanPhone, cleanPhone]);
           if (rows && rows.length > 0) {
             return res.status(409).json({
               success: false,
-              message: `Another account already exists with mobile number +91 ${cleanPhone} in MySQL.`
+              message: `Another account already exists with mobile number +91 ${cleanPhone}.`
             });
           }
         } catch (dbErr) {
@@ -874,7 +961,7 @@ export const updateUser = async (req, res) => {
         if (rows && rows.length > 0) {
           return res.status(409).json({
             success: false,
-            message: `Another administrator already exists with email "${cleanEmail}" in MySQL.`
+            message: `Another account already exists with email "${cleanEmail}".`
           });
         }
       } catch (dbErr) {
