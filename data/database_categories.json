@@ -36,7 +36,7 @@
   },
   {
     "id": "cat-1790773915020",
-    "name": "Test Device Category",
+    "name": "Test Device Category 1",
     "description": "Test Device Category Description",
     "icon": "Box",
     "createdAt": "2026-09-30"
@@ -46,6 +46,6 @@
     "name": "Smart IoT RO test",
     "description": "Auto-created during bulk upload",
     "icon": "Box",
-    "createdAt": "2026-09-30"
+    "createdAt": "2026-10-03"
   }
 ]

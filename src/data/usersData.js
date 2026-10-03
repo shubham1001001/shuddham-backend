@@ -8,6 +8,19 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../../data');
 const DB_FILE = path.join(DATA_DIR, 'database_users.json');
 
+// Helper to normalize phone number strictly to 10 digits
+export const normalizePhone = (phoneStr) => {
+  if (!phoneStr) return '';
+  const digits = phoneStr.toString().replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits.substring(2);
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.substring(1);
+  }
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 // Initial seed accounts: ONLY Super Admin
 const initialSeedUsers = [
   {
@@ -70,6 +83,10 @@ export function saveUserToDatabase(newUser) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
+    if (newUser.phone) {
+      newUser.phone = normalizePhone(newUser.phone);
+    }
+
     const currentUsers = loadUsersFromDisk();
     const idx = currentUsers.findIndex(u => u.id === newUser.id);
     if (idx >= 0) {
@@ -88,6 +105,7 @@ export function saveUserToDatabase(newUser) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           full_name = VALUES(full_name),
+          email = VALUES(email),
           phone = VALUES(phone),
           password = VALUES(password),
           role = VALUES(role),
@@ -137,7 +155,7 @@ export async function getCreatedAdmins() {
           name: r.full_name,
           fullName: r.full_name,
           email: r.email,
-          phone: r.phone,
+          phone: r.phone ? normalizePhone(r.phone) : '',
           specialization: r.role === 'Super Admin' ? 'Master Authority' : (r.role === 'Admin' ? 'Administrator' : (r.role === 'Customer' ? 'Registered Customer' : (r.role || 'Staff Member'))),
           role: r.role || 'Customer',
           location: r.city || 'Operations HQ',
@@ -158,7 +176,7 @@ export async function getCreatedAdmins() {
     name: u.fullName || u.full_name || u.name,
     fullName: u.fullName || u.full_name || u.name,
     email: u.email,
-    phone: u.phone,
+    phone: u.phone ? normalizePhone(u.phone) : '',
     specialization: u.role === 'Super Admin' ? 'Master Authority' : (u.role === 'Admin' ? 'Administrator' : (u.role === 'Customer' ? 'Registered Customer' : (u.role || 'Staff Member'))),
     role: u.role || 'Customer',
     location: u.city || u.location || 'Operations HQ',
@@ -182,11 +200,11 @@ export async function getUserById(id) {
           fullName: r.full_name,
           name: r.full_name,
           email: r.email,
-          phone: r.phone,
+          phone: r.phone ? normalizePhone(r.phone) : '',
           role: r.role,
           city: r.city,
           location: r.city,
-          status: r.is_active ? 'Active' : 'Inactive',
+          status: r.is_active === 0 ? 'Inactive' : 'Active',
           createdAt: r.created_at,
           updatedAt: r.updated_at
         };
@@ -206,16 +224,50 @@ export async function getUserById(id) {
 export async function updateUserInDatabase(id, updates) {
   try {
     const currentUsers = loadUsersFromDisk();
-    const idx = currentUsers.findIndex(u => u.id === id);
-    if (idx === -1) {
-      return null;
+    let idx = currentUsers.findIndex(u => u.id === id);
+    let existingUser = idx !== -1 ? currentUsers[idx] : null;
+
+    // Check MySQL if user is not in disk cache yet
+    if (!existingUser && isMySQLActive()) {
+      try {
+        const rows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
+        if (rows && rows.length > 0) {
+          const r = rows[0];
+          existingUser = {
+            id: r.id,
+            fullName: r.full_name,
+            name: r.full_name,
+            email: r.email,
+            phone: r.phone ? normalizePhone(r.phone) : '',
+            password: r.password,
+            city: r.city,
+            location: r.city,
+            role: r.role || 'Customer',
+            status: r.is_active === 0 ? 'Inactive' : 'Active',
+            createdAt: r.created_at
+          };
+        }
+      } catch (dbErr) {
+        console.warn('[UsersData] MySQL check in updateUserInDatabase:', dbErr.message);
+      }
     }
 
-    const existingUser = currentUsers[idx];
+    if (!existingUser) {
+      return null;
+    }
 
     // Protect primary Super Admin role
     if (id === 'usr-superadmin' && updates.role && updates.role !== 'Super Admin') {
       throw new Error('Super Admin role cannot be modified');
+    }
+
+    // Strictly normalize phone to 10 digits if provided
+    let cleanPhone = existingUser.phone;
+    if (updates.phone !== undefined && updates.phone !== null && updates.phone.toString().trim() !== '') {
+      cleanPhone = normalizePhone(updates.phone);
+      if (cleanPhone.length !== 10) {
+        throw new Error('Mobile number must be exactly 10 digits');
+      }
     }
 
     const updatedUser = {
@@ -223,10 +275,10 @@ export async function updateUserInDatabase(id, updates) {
       fullName: updates.fullName !== undefined ? updates.fullName.trim() : (existingUser.fullName || existingUser.name),
       name: updates.fullName !== undefined ? updates.fullName.trim() : (existingUser.name || existingUser.fullName),
       email: updates.email !== undefined ? updates.email.trim().toLowerCase() : existingUser.email,
-      phone: updates.phone !== undefined ? updates.phone.trim() : existingUser.phone,
+      phone: cleanPhone,
       city: updates.city !== undefined ? updates.city.trim() : (existingUser.city || existingUser.location),
       location: updates.city !== undefined ? updates.city.trim() : (existingUser.location || existingUser.city),
-      role: updates.role || existingUser.role || 'Admin',
+      role: updates.role || existingUser.role || 'Customer',
       status: updates.status || existingUser.status || 'Active',
       updatedAt: new Date().toISOString()
     };
@@ -235,7 +287,11 @@ export async function updateUserInDatabase(id, updates) {
       updatedUser.password = updates.password.trim();
     }
 
-    currentUsers[idx] = updatedUser;
+    if (idx >= 0) {
+      currentUsers[idx] = updatedUser;
+    } else {
+      currentUsers.push(updatedUser);
+    }
     fs.writeFileSync(DB_FILE, JSON.stringify(currentUsers, null, 2), 'utf-8');
 
     // Update MySQL if active
@@ -271,12 +327,13 @@ export async function updateUserInDatabase(id, updates) {
             id
           ]);
         }
+        console.log(`[MySQL Database] User "${updatedUser.fullName}" (phone: ${updatedUser.phone}) successfully updated in MySQL users table!`);
       } catch (err) {
         console.warn('[UsersData] MySQL update user fallback:', err.message);
       }
     }
 
-    console.log(`[Database File] User "${updatedUser.fullName}" (ID: ${id}) updated in database`);
+    console.log(`[Database File] User "${updatedUser.fullName}" (ID: ${id}) updated with phone ${updatedUser.phone}`);
     return updatedUser;
   } catch (err) {
     console.error('[UsersData] Error updating user:', err.message);
@@ -295,23 +352,36 @@ export async function deleteUserFromDatabase(id) {
 
     const currentUsers = loadUsersFromDisk();
     const idx = currentUsers.findIndex(u => u.id === id);
-    if (idx === -1) {
+    let targetUser = idx !== -1 ? currentUsers[idx] : null;
+
+    if (!targetUser && isMySQLActive()) {
+      try {
+        const rows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
+        if (rows && rows.length > 0) {
+          targetUser = { id: rows[0].id, role: rows[0].role, fullName: rows[0].full_name, email: rows[0].email };
+        }
+      } catch (e) {}
+    }
+
+    if (!targetUser) {
       return null;
     }
 
-    const targetUser = currentUsers[idx];
     if (targetUser.role === 'Super Admin') {
       throw new Error('Super Admin account cannot be deleted');
     }
 
-    // Remove from in-memory and disk file
-    const deletedUser = currentUsers.splice(idx, 1)[0];
-    fs.writeFileSync(DB_FILE, JSON.stringify(currentUsers, null, 2), 'utf-8');
+    // Remove from disk file if present
+    if (idx !== -1) {
+      currentUsers.splice(idx, 1);
+      fs.writeFileSync(DB_FILE, JSON.stringify(currentUsers, null, 2), 'utf-8');
+    }
 
     // Delete from MySQL
     if (isMySQLActive()) {
       try {
         await query('DELETE FROM users WHERE id = ?', [id]);
+        console.log(`[MySQL Database] User ${id} deleted from MySQL users table!`);
       } catch (err) {
         console.warn('[UsersData] MySQL delete user fallback:', err.message);
       }

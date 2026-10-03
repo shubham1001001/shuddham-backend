@@ -32,23 +32,30 @@
   {
     "id": "usr-1790662711001",
     "fullName": "admin",
-    "phone": "7828790027",
+    "phone": "9876543210",
     "email": "admin@gmail.com",
     "password": "123456",
     "city": "Green Valley Hub, Sector 21",
     "role": "Admin",
     "isProvisioned": true,
-    "createdAt": "2026-09-29T06:18:00.000Z"
+    "createdAt": "2026-09-29T06:18:00.000Z",
+    "name": "admin",
+    "location": "Green Valley Hub, Sector 21",
+    "status": "Active",
+    "updatedAt": "2026-10-03T07:56:13.647Z"
   },
   {
-    "id": "usr-1790841741613",
+    "id": "usr-1790839068258",
     "fullName": "test",
-    "phone": "9999999999",
-    "email": "test1@gmail.com",
+    "name": "test",
+    "email": "test@gmail.com",
+    "phone": "9822334455",
     "password": "123456",
     "city": "Green Valley Hub",
+    "location": "Green Valley Hub",
     "role": "Customer",
-    "isProvisioned": true,
-    "createdAt": "2026-10-01T08:02:21.613Z"
+    "status": "Active",
+    "createdAt": "2026-10-01T01:47:48.000Z",
+    "updatedAt": "2026-10-03T07:56:26.963Z"
   }
 ]

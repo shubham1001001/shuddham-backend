@@ -10,7 +10,7 @@
     "rating": 5,
     "reviewCount": 0,
     "createdAt": "2026-10-03T01:23:32.000Z",
-    "updatedAt": "2026-10-03T01:23:32.000Z"
+    "updatedAt": "2026-10-03T01:24:28.000Z"
   },
   {
     "id": "srv-3",
@@ -50,5 +50,18 @@
     "reviewCount": 140,
     "createdAt": "2026-10-03T01:23:32.000Z",
     "updatedAt": "2026-10-03T01:23:32.000Z"
+  },
+  {
+    "id": "srv-1791010771492",
+    "title": "test service",
+    "category": "Tank Cleaning",
+    "price": 700,
+    "duration": "1 Hour",
+    "description": "",
+    "featured": false,
+    "rating": 5,
+    "reviewCount": 0,
+    "createdAt": "2026-10-03T01:31:10.000Z",
+    "updatedAt": "2026-10-03T01:31:10.000Z"
   }
 ]

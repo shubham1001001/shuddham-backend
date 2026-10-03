@@ -11,14 +11,17 @@ import {
 } from '../data/usersData.js';
 import { query, isMySQLActive } from '../config/db.js';
 
-// Helper to normalize phone number
+// Helper to normalize phone number strictly to 10 digits
 const normalizePhone = (phoneStr) => {
   if (!phoneStr) return '';
   const digits = phoneStr.toString().replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) {
     return digits.substring(2);
   }
-  return digits.length >= 10 ? digits.slice(-10) : digits;
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.substring(1);
+  }
+  return digits.length > 10 ? digits.slice(-10) : digits;
 };
 
 // Helper to create a secure session token
@@ -265,6 +268,13 @@ export const createUser = async (req, res) => {
     }
 
     const cleanPhone = normalizePhone(phone);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mobile number must be exactly 10 digits.'
+      });
+    }
+
     const cleanEmail = email ? email.toString().trim().toLowerCase() : null;
 
     if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -290,19 +300,30 @@ export const createUser = async (req, res) => {
     if (existingInStore) {
       return res.status(409).json({
         success: false,
-        message: 'An administrator with this email or mobile number already exists.'
+        message: 'An administrator or user with this email or mobile number already exists.'
       });
     }
 
-    // Check if user already exists in MySQL
-    if (isMySQLActive() && cleanEmail) {
+    // Check if email or phone already exists in MySQL
+    if (isMySQLActive()) {
       try {
-        const existing = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [cleanEmail]);
-        if (existing && existing.length > 0) {
-          return res.status(409).json({
-            success: false,
-            message: 'An account with this email address already exists.'
-          });
+        if (cleanEmail) {
+          const existingEmail = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [cleanEmail]);
+          if (existingEmail && existingEmail.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message: 'An account with this email address already exists.'
+            });
+          }
+        }
+        if (cleanPhone) {
+          const existingPhone = await query('SELECT id FROM users WHERE phone = ? LIMIT 1', [cleanPhone]);
+          if (existingPhone && existingPhone.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message: `An account with mobile number +91 ${cleanPhone} already exists.`
+            });
+          }
         }
       } catch (e) {}
     }
@@ -312,7 +333,7 @@ export const createUser = async (req, res) => {
     const newUser = {
       id: `usr-${Date.now()}`,
       fullName: fullName.trim(),
-      phone: cleanPhone || '9800011100',
+      phone: cleanPhone,
       email: cleanEmail,
       password: password,
       city: city ? city.trim() : 'Green Valley Hub',
@@ -463,7 +484,16 @@ export const updateMe = async (req, res) => {
     }
 
     const { fullName, phone, email, city } = req.body;
-    const cleanPhone = phone ? normalizePhone(phone) : undefined;
+    let cleanPhone;
+    if (phone !== undefined && phone !== null && phone.toString().trim() !== '') {
+      cleanPhone = normalizePhone(phone);
+      if (cleanPhone.length !== 10) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mobile number must be exactly 10 digits.'
+        });
+      }
+    }
 
     let user = null;
     const allUsers = getAllUsers();
@@ -493,6 +523,18 @@ export const updateMe = async (req, res) => {
     user.updatedAt = new Date().toISOString();
 
     saveUserToDatabase(user);
+
+    if (isMySQLActive() && user.id) {
+      try {
+        await query(`
+          UPDATE users 
+          SET full_name = ?, email = ?, phone = ?, city = ?
+          WHERE id = ?
+        `, [user.fullName || user.full_name, user.email, user.phone, user.city, user.id]);
+      } catch (e) {
+        console.warn('[AuthController] MySQL updateMe warning:', e.message);
+      }
+    }
 
     return res.status(200).json({
       success: true,
@@ -760,7 +802,16 @@ export const updateUser = async (req, res) => {
     }
 
     const cleanEmail = email ? email.toString().trim().toLowerCase() : undefined;
-    const cleanPhone = phone ? normalizePhone(phone) : undefined;
+    let cleanPhone;
+    if (phone !== undefined && phone !== null && phone.toString().trim() !== '') {
+      cleanPhone = normalizePhone(phone);
+      if (cleanPhone.length !== 10) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mobile number must be exactly 10 digits.'
+        });
+      }
+    }
 
     if (password && password.trim().length > 0 && password.trim().length < 6) {
       return res.status(400).json({
@@ -769,19 +820,19 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    // Find current user to check if email or phone is actually being changed
-    const allUsers = getAllUsers();
-    const currentUser = allUsers.find(u => u.id === id);
+    // Find current user from MySQL or disk
+    const currentUser = (await getUserById(id)) || getAllUsers().find(u => u.id === id);
 
     if (!currentUser) {
       return res.status(404).json({
         success: false,
-        message: 'Administrator not found in database'
+        message: 'User / Administrator not found in database'
       });
     }
 
     // 1. Check duplicate email ONLY IF email is being changed
     if (cleanEmail && currentUser.email && cleanEmail !== currentUser.email.toLowerCase()) {
+      const allUsers = getAllUsers();
       const emailDup = allUsers.find(u => u.id !== id && u.email && u.email.toLowerCase() === cleanEmail);
       if (emailDup) {
         return res.status(409).json({
@@ -792,13 +843,27 @@ export const updateUser = async (req, res) => {
     }
 
     // 2. Check duplicate phone ONLY IF phone is being changed
-    if (cleanPhone && currentUser.phone && cleanPhone !== normalizePhone(currentUser.phone)) {
+    if (cleanPhone && (!currentUser.phone || cleanPhone !== normalizePhone(currentUser.phone))) {
+      const allUsers = getAllUsers();
       const phoneDup = allUsers.find(u => u.id !== id && u.phone && normalizePhone(u.phone) === cleanPhone);
       if (phoneDup) {
         return res.status(409).json({
           success: false,
-          message: `Another administrator already exists with mobile number +91 ${cleanPhone}.`
+          message: `Another account already exists with mobile number +91 ${cleanPhone}.`
         });
+      }
+      if (isMySQLActive()) {
+        try {
+          const rows = await query('SELECT id FROM users WHERE phone = ? AND id != ? LIMIT 1', [cleanPhone, id]);
+          if (rows && rows.length > 0) {
+            return res.status(409).json({
+              success: false,
+              message: `Another account already exists with mobile number +91 ${cleanPhone} in MySQL.`
+            });
+          }
+        } catch (dbErr) {
+          console.warn('[AuthController] MySQL phone duplicate check warning:', dbErr.message);
+        }
       }
     }
 
@@ -837,7 +902,7 @@ export const updateUser = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Administrator "${updated.fullName || updated.name}" updated successfully`,
+      message: `User "${updated.fullName || updated.name}" updated successfully in database`,
       data: {
         user: sanitizeUser(updated)
       }
@@ -846,7 +911,7 @@ export const updateUser = async (req, res) => {
     console.error('[AuthController] Update User Error:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Server error while updating administrator',
+      message: error.message || 'Server error while updating user',
       error: error.message
     });
   }
@@ -869,8 +934,7 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    const allUsers = getAllUsers();
-    const existing = allUsers.find(u => u.id === id);
+    const existing = (await getUserById(id)) || getAllUsers().find(u => u.id === id);
     if (!existing) {
       return res.status(404).json({
         success: false,

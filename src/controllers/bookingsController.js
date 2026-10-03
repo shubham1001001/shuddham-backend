@@ -10,14 +10,17 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../../data');
 const BOOKINGS_FILE = path.join(DATA_DIR, 'database_bookings.json');
 
-// Helper to normalize phone numbers for searching
+// Helper to normalize phone numbers strictly to 10 digits
 const normalizePhone = (phoneStr) => {
   if (!phoneStr) return '';
   const digits = phoneStr.toString().replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) {
     return digits.substring(2);
   }
-  return digits.length >= 10 ? digits.slice(-10) : digits;
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return digits.substring(1);
+  }
+  return digits.length > 10 ? digits.slice(-10) : digits;
 };
 
 // Disk Persistence Helpers
@@ -169,8 +172,9 @@ export const createBooking = async (req, res) => {
     const timeSlot = req.body.timeSlot || req.body.slot;
     const amount = req.body.amount !== undefined ? req.body.amount : req.body.price;
 
-    if (!customerName || !customerPhone || !serviceTitle || !address || !address.trim()) {
-      return res.status(400).json({ success: false, message: 'Customer name, phone, service title, and address are required' });
+    const cleanPhone = normalizePhone(customerPhone);
+    if (!customerName || !cleanPhone || cleanPhone.length !== 10 || !serviceTitle || !address || !address.trim()) {
+      return res.status(400).json({ success: false, message: 'Valid customer name, 10-digit phone number, service title, and address are required' });
     }
 
     // Extract customer ID from auth header if present
@@ -191,7 +195,7 @@ export const createBooking = async (req, res) => {
       id: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
       customerId: customerId,
       customerName,
-      customerPhone,
+      customerPhone: cleanPhone,
       serviceTitle,
       address: address || 'Default Address',
       date: date || new Date().toISOString().split('T')[0],
@@ -252,7 +256,15 @@ export const createBooking = async (req, res) => {
 
 export const updateBookingStatus = async (req, res) => {
   const { id } = req.params;
-  const { status, technicianId, tdsBefore, tdsAfter } = req.body;
+  const { status, technicianId, tdsBefore, tdsAfter, customerPhone, phone } = req.body;
+
+  let cleanPhone = null;
+  if (customerPhone || phone) {
+    cleanPhone = normalizePhone(customerPhone || phone);
+    if (cleanPhone.length !== 10) {
+      return res.status(400).json({ success: false, message: 'Customer mobile number must be exactly 10 digits' });
+    }
+  }
 
   let techName = null;
   if (technicianId) {
@@ -270,6 +282,7 @@ export const updateBookingStatus = async (req, res) => {
       if (tdsAfter !== undefined) { updates.push('tds_after = ?'); params.push(tdsAfter); }
       if (technicianId) { updates.push('technician_id = ?'); params.push(technicianId); }
       if (techName) { updates.push('technician_name = ?'); params.push(techName); }
+      if (cleanPhone) { updates.push('customer_phone = ?'); params.push(cleanPhone); }
 
       if (updates.length > 0) {
         params.push(id);
@@ -288,6 +301,7 @@ export const updateBookingStatus = async (req, res) => {
   if (status) booking.status = status;
   if (tdsBefore !== undefined) booking.tdsBefore = tdsBefore;
   if (tdsAfter !== undefined) booking.tdsAfter = tdsAfter;
+  if (cleanPhone) booking.customerPhone = cleanPhone;
   if (technicianId) {
     booking.technicianId = technicianId;
     if (techName) booking.technicianName = techName;
