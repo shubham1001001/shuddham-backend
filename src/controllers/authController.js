@@ -72,12 +72,28 @@ const authenticateUserRecord = async (phoneOrEmail) => {
   // 1. Check in MySQL Database first
   if (isMySQLActive()) {
     try {
-      const rows = await query(
-        'SELECT * FROM users WHERE LOWER(email) = ? OR phone = ? LIMIT 1',
-        [searchInput, cleanPhone || searchInput]
-      );
-      if (rows && rows.length > 0) {
-        user = rows[0];
+      if (isEmail) {
+        const rows = await query(
+          'SELECT * FROM users WHERE LOWER(email) = ? LIMIT 1',
+          [searchInput]
+        );
+        if (rows && rows.length > 0) {
+          user = rows[0];
+        }
+      } else if (cleanPhone) {
+        const rows = await query(
+          `SELECT * FROM users 
+           WHERE phone = ? 
+              OR phone = ? 
+              OR phone = ? 
+              OR phone = ? 
+              OR RIGHT(REGEXP_REPLACE(phone, '[^0-9]', ''), 10) = ? 
+           LIMIT 1`,
+          [cleanPhone, '+91' + cleanPhone, '91' + cleanPhone, '+91 ' + cleanPhone, cleanPhone]
+        );
+        if (rows && rows.length > 0) {
+          user = rows[0];
+        }
       }
     } catch (dbErr) {
       console.warn('[AuthController] MySQL query warning, using local fallback:', dbErr.message);
@@ -91,7 +107,7 @@ const authenticateUserRecord = async (phoneOrEmail) => {
       if (isEmail && u.email) {
         return u.email.toLowerCase() === searchInput;
       }
-      return u.phone === cleanPhone;
+      return u.phone && normalizePhone(u.phone) === cleanPhone;
     });
   }
 
@@ -123,7 +139,11 @@ export const customerLogin = async (req, res) => {
       });
     }
 
-    if (user.password !== password) {
+    // Verify against existing password in database
+    const existingPassword = (user.password || '').toString().trim();
+    const enteredPassword = (password || '').toString().trim();
+
+    if (existingPassword !== enteredPassword) {
       return res.status(401).json({
         success: false,
         message: 'Incorrect password. Please enter the correct password.'
@@ -191,7 +211,11 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    if (user.password !== password) {
+    // Verify against existing password in database
+    const existingPassword = (user.password || '').toString().trim();
+    const enteredPassword = (password || '').toString().trim();
+
+    if (existingPassword !== enteredPassword) {
       return res.status(401).json({
         success: false,
         message: 'Incorrect password. Please enter the correct password.'

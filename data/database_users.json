@@ -14,48 +14,6 @@
     "updatedAt": "2026-10-03T04:06:23.000Z"
   },
   {
-    "id": "usr-1790839068258",
-    "fullName": "test",
-    "name": "test",
-    "email": "test@gmail.com",
-    "phone": "9111223344",
-    "password": "123456",
-    "city": "Green Valley Hub",
-    "location": "Green Valley Hub",
-    "role": "Customer",
-    "status": "Active",
-    "createdAt": "2026-10-01T01:47:48.000Z",
-    "updatedAt": "2026-10-03T02:31:17.000Z"
-  },
-  {
-    "id": "usr-1790841741613",
-    "fullName": "test",
-    "name": "test",
-    "email": "test1@gmail.com",
-    "phone": "9999999999",
-    "password": "123456",
-    "city": "Green Valley Hub",
-    "location": "Green Valley Hub",
-    "role": "Customer",
-    "status": "Active",
-    "createdAt": "2026-10-03T02:25:06.000Z",
-    "updatedAt": "2026-10-03T04:22:24.000Z"
-  },
-  {
-    "id": "usr-1790859328399",
-    "fullName": "tulsi",
-    "name": "tulsi",
-    "email": "tulsi@gmail.com",
-    "phone": "9000000000",
-    "password": "123456",
-    "city": "Green Valley Hub",
-    "location": "Green Valley Hub",
-    "role": "Customer",
-    "status": "Active",
-    "createdAt": "2026-10-01T07:25:28.000Z",
-    "updatedAt": "2026-10-03T04:24:06.000Z"
-  },
-  {
     "id": "usr-superadmin",
     "fullName": "Super Admin",
     "name": "Super Admin",
@@ -67,7 +25,7 @@
     "role": "Super Admin",
     "status": "Active",
     "createdAt": "2026-09-30T05:33:43.000Z",
-    "updatedAt": "2026-10-03T04:06:23.000Z"
+    "updatedAt": "2026-10-03T04:32:08.000Z"
   },
   {
     "id": "usr-testadmin",
