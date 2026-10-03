@@ -1,5 +1,18 @@
 [
   {
+    "id": "srv-1790776075952",
+    "title": "RO Express Service & Filter Flush",
+    "category": "RO Service",
+    "price": 299,
+    "duration": "45 Mins",
+    "description": "this is test service",
+    "featured": false,
+    "rating": 5,
+    "reviewCount": 0,
+    "createdAt": "2026-10-03T01:23:32.000Z",
+    "updatedAt": "2026-10-03T01:23:32.000Z"
+  },
+  {
     "id": "srv-3",
     "title": "Smart RO Device Installation & IoT Setup",
     "category": "Installation",
@@ -8,7 +21,9 @@
     "description": "Complete unboxing, wall-mounting, plumbing inlet push-fit connection, mobile IoT app pairing, and certified TDS calibration.",
     "featured": true,
     "rating": 4.9,
-    "reviewCount": 215
+    "reviewCount": 215,
+    "createdAt": "2026-10-03T01:23:32.000Z",
+    "updatedAt": "2026-10-03T01:23:32.000Z"
   },
   {
     "id": "srv-4",
@@ -19,7 +34,9 @@
     "description": "Diagnosis and replacement of Philips UV disinfection tube, ballast, and power adapter circuit.",
     "featured": false,
     "rating": 4.7,
-    "reviewCount": 98
+    "reviewCount": 98,
+    "createdAt": "2026-10-03T01:23:32.000Z",
+    "updatedAt": "2026-10-03T01:23:32.000Z"
   },
   {
     "id": "srv-5",
@@ -30,17 +47,8 @@
     "description": "Comprehensive 8-parameter on-site water quality analysis with certified digital report.",
     "featured": false,
     "rating": 4.9,
-    "reviewCount": 140
-  },
-  {
-    "id": "srv-1790776075952",
-    "title": "test service",
-    "category": "RO Service",
-    "price": 200,
-    "duration": "1 Hour",
-    "description": "this is test service",
-    "featured": false,
-    "rating": 5,
-    "reviewCount": 0
+    "reviewCount": 140,
+    "createdAt": "2026-10-03T01:23:32.000Z",
+    "updatedAt": "2026-10-03T01:23:32.000Z"
   }
 ]

@@ -11,6 +11,8 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../../data');
 const INVENTORY_FILE = path.join(DATA_DIR, 'database_inventory.json');
 const CATEGORIES_FILE = path.join(DATA_DIR, 'database_categories.json');
+const SERVICES_FILE = path.join(DATA_DIR, 'database_services.json');
+import { initialServices } from '../data/mockData.js';
 
 export const dbConfig = {
   host: (process.env.DB_HOST || 'localhost').trim(),
@@ -301,6 +303,54 @@ export async function initDatabase() {
         INDEX \`idx_serv_cat\` (\`category\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // 12. Sync services from JSON file or mock data to MySQL
+    let servicesToSync = [];
+    if (fs.existsSync(SERVICES_FILE)) {
+      try {
+        const fileContent = fs.readFileSync(SERVICES_FILE, 'utf-8');
+        const parsed = JSON.parse(fileContent);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          servicesToSync = parsed;
+        }
+      } catch (err) {
+        console.warn('[MySQL Database] Services file read error:', err.message);
+      }
+    }
+    if (servicesToSync.length === 0 && Array.isArray(initialServices)) {
+      servicesToSync = initialServices;
+    }
+
+    for (const srv of servicesToSync) {
+      try {
+        await connection.query(`
+          INSERT INTO \`services\` (
+            \`id\`, \`title\`, \`category\`, \`price\`, \`duration\`, \`description\`, \`featured\`, \`rating\`, \`review_count\`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            \`title\` = VALUES(\`title\`),
+            \`category\` = VALUES(\`category\`),
+            \`price\` = VALUES(\`price\`),
+            \`duration\` = VALUES(\`duration\`),
+            \`description\` = VALUES(\`description\`),
+            \`featured\` = VALUES(\`featured\`),
+            \`rating\` = VALUES(\`rating\`),
+            \`review_count\` = VALUES(\`review_count\`);
+        `, [
+          srv.id,
+          srv.title,
+          srv.category,
+          Number(srv.price) || 0,
+          srv.duration || '1 Hour',
+          srv.description || '',
+          srv.featured ? 1 : 0,
+          parseFloat(srv.rating) || 4.8,
+          parseInt(srv.reviewCount !== undefined ? srv.reviewCount : (srv.review_count !== undefined ? srv.review_count : 100))
+        ]);
+      } catch (sErr) {
+        console.warn('[MySQL Database] Error syncing service', srv.id, sErr.message);
+      }
+    }
 
     connection.release();
     isConnected = true;
