@@ -698,6 +698,14 @@ export const changePassword = async (req, res) => {
     user.password = newPassword;
     saveUserToDatabase(user);
 
+    if (isMySQLActive()) {
+      try {
+        await query('UPDATE users SET password = ? WHERE id = ?', [newPassword.trim(), user.id]);
+      } catch (e) {
+        console.warn('[AuthController] MySQL changePassword update error:', e.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Password changed successfully'
