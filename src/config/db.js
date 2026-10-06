@@ -1,18 +1,7 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const INVENTORY_FILE = path.join(DATA_DIR, 'database_inventory.json');
-const CATEGORIES_FILE = path.join(DATA_DIR, 'database_categories.json');
-const SERVICES_FILE = path.join(DATA_DIR, 'database_services.json');
-import { initialServices } from '../data/mockData.js';
 
 export const dbConfig = {
   host: (process.env.DB_HOST || 'localhost').trim(),
@@ -23,12 +12,15 @@ export const dbConfig = {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  ...(process.env.DB_SSL === 'true' || process.env.DB_SSL === '1' || (process.env.DB_HOST && process.env.DB_HOST.trim() !== 'localhost' && process.env.DB_HOST.trim() !== '127.0.0.1') ? {
+  connectTimeout: 10000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
+  ...(process.env.DB_SSL === 'false' || process.env.DB_SSL === '0' ? {} : {
     ssl: {
       minVersion: 'TLSv1.2',
-      rejectUnauthorized: true
+      rejectUnauthorized: false
     }
-  } : {})
+  })
 };
 
 let pool = null;
@@ -36,11 +28,11 @@ let isConnected = false;
 let lastDbError = null;
 
 /**
- * Initialize MySQL Connection Pool, Auto-Create Schema & Sync Data
+ * Initialize MySQL Connection Pool & Auto-Verify Schema
  */
 export async function initDatabase() {
   try {
-    // 1. If running locally or as root, try ensuring database exists
+    // 1. If running locally as root, ensure database exists
     if (!process.env.DB_HOST || process.env.DB_HOST === 'localhost' || process.env.DB_HOST === '127.0.0.1') {
       try {
         const rootConnection = await mysql.createConnection({
@@ -52,18 +44,18 @@ export async function initDatabase() {
         await rootConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`);
         await rootConnection.end();
       } catch (err) {
-        // Ignore root create database errors on non-root or cloud environments
+        // Ignore root create database errors
       }
     }
 
-    // 2. Initialize connection pool to the database
+    // 2. Initialize connection pool to MySQL
     pool = mysql.createPool(dbConfig);
 
     // 3. Test pool connection
     const connection = await pool.getConnection();
     console.log(`[MySQL Database] Connected successfully to ${dbConfig.database} on ${dbConfig.host}:${dbConfig.port}`);
 
-    // 4. Auto-create 'users' table with UNIQUE phone and email
+    // 4. Ensure 'users' table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`users\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -83,95 +75,7 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Ensure 'phone' column has a UNIQUE index
-    try {
-      await connection.query(`ALTER TABLE \`users\` ADD UNIQUE INDEX \`uq_phone\` (\`phone\`);`);
-    } catch (e) {
-      // Index already exists or not supported
-    }
-
-    // Ensure 'role' column allows 'Customer' and any dynamic role (migration from ENUM)
-    try {
-      await connection.query(`ALTER TABLE \`users\` MODIFY COLUMN \`role\` VARCHAR(50) NOT NULL DEFAULT 'Customer';`);
-    } catch (e) {
-      // Role column already modified or not supported
-    }
-
-    // 5. Auto-seed required admin accounts (Super Admin)
-    const seedUsers = [
-      ['usr-superadmin', 'Super Admin', 'superadmin@gmail.com', '9800011100', '123456', 'Super Admin', 'HQ Executive Office']
-    ];
-
-    for (const u of seedUsers) {
-      await connection.query(`
-        INSERT INTO \`users\` (\`id\`, \`full_name\`, \`email\`, \`phone\`, \`password\`, \`role\`, \`city\`)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE 
-          \`password\` = VALUES(\`password\`),
-          \`role\` = VALUES(\`role\`);
-      `, u);
-    }
-
-    // 5.1 Auto-sync users from database_users.json into MySQL
-    const USERS_FILE = path.join(DATA_DIR, 'database_users.json');
-    if (fs.existsSync(USERS_FILE)) {
-      try {
-        const fileUsers = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
-        if (Array.isArray(fileUsers)) {
-          for (const u of fileUsers) {
-            if (!u.email) continue;
-            await connection.query(`
-              INSERT INTO \`users\` (\`id\`, \`full_name\`, \`email\`, \`phone\`, \`password\`, \`role\`, \`city\`, \`is_active\`)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE 
-                \`full_name\` = VALUES(\`full_name\`),
-                \`phone\` = VALUES(\`phone\`),
-                \`password\` = VALUES(\`password\`),
-                \`role\` = VALUES(\`role\`),
-                \`city\` = VALUES(\`city\`),
-                \`is_active\` = VALUES(\`is_active\`);
-            `, [
-              u.id || `usr-${Date.now()}`,
-              u.fullName || u.name || u.full_name || 'User',
-              u.email ? u.email.trim().toLowerCase() : '',
-              u.phone || '',
-              u.password || '123456',
-              u.role || 'Customer',
-              u.city || u.location || 'Operations HQ',
-              u.status === 'Inactive' ? 0 : 1
-            ]);
-          }
-        }
-      } catch (err) {
-        console.warn('[MySQL Database] Users sync note:', err.message);
-      }
-    }
-
-    // 5.2 Auto-sync from MySQL back to database_users.json so local cache has all MySQL users
-    try {
-      const [allDbUsers] = await connection.query('SELECT * FROM users');
-      if (allDbUsers && allDbUsers.length > 0) {
-        const mappedUsers = allDbUsers.map(r => ({
-          id: r.id,
-          fullName: r.full_name,
-          name: r.full_name,
-          email: r.email,
-          phone: r.phone || '',
-          password: r.password,
-          city: r.city,
-          location: r.city,
-          role: r.role,
-          status: r.is_active ? 'Active' : 'Inactive',
-          createdAt: r.created_at,
-          updatedAt: r.updated_at
-        }));
-        fs.writeFileSync(USERS_FILE, JSON.stringify(mappedUsers, null, 2), 'utf-8');
-      }
-    } catch (syncErr) {
-      console.warn('[MySQL Database] Reverse users sync note:', syncErr.message);
-    }
-
-    // 6. Auto-create 'device_categories' table
+    // Ensure 'device_categories' table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`device_categories\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -184,7 +88,7 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 7. Auto-create 'inventory' table with support for serials and assignments
+    // Ensure 'inventory' table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`inventory\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -208,83 +112,7 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Ensure columns available_serials and assignments exist if table was previously created without them
-    try {
-      await connection.query(`ALTER TABLE \`inventory\` ADD COLUMN \`available_serials\` LONGTEXT DEFAULT NULL;`);
-    } catch (e) { /* column exists */ }
-    try {
-      await connection.query(`ALTER TABLE \`inventory\` ADD COLUMN \`assignments\` LONGTEXT DEFAULT NULL;`);
-    } catch (e) { /* column exists */ }
-
-    // 8. Sync categories from JSON file to MySQL if file exists
-    if (fs.existsSync(CATEGORIES_FILE)) {
-      try {
-        const fileCats = JSON.parse(fs.readFileSync(CATEGORIES_FILE, 'utf-8'));
-        if (Array.isArray(fileCats)) {
-          for (const cat of fileCats) {
-            await connection.query(`
-              INSERT INTO \`device_categories\` (\`id\`, \`name\`, \`description\`, \`icon\`)
-              VALUES (?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                \`description\` = VALUES(\`description\`),
-                \`icon\` = VALUES(\`icon\`);
-            `, [cat.id || `cat-${Date.now()}`, cat.name, cat.description || '', cat.icon || 'Box']);
-          }
-        }
-      } catch (err) {
-        console.warn('[MySQL Database] Categories sync note:', err.message);
-      }
-    }
-
-    // 9. Sync inventory items from JSON file to MySQL if file exists
-    if (fs.existsSync(INVENTORY_FILE)) {
-      try {
-        const fileInv = JSON.parse(fs.readFileSync(INVENTORY_FILE, 'utf-8'));
-        if (Array.isArray(fileInv)) {
-          for (const item of fileInv) {
-            await connection.query(`
-              INSERT INTO \`inventory\` (
-                \`id\`, \`sku\`, \`name\`, \`category\`, \`stock_quantity\`, \`min_threshold\`, 
-                \`unit\`, \`cost_price\`, \`selling_price\`, \`location\`, \`supplier\`, 
-                \`last_restocked\`, \`available_serials\`, \`assignments\`
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                \`name\` = VALUES(\`name\`),
-                \`category\` = VALUES(\`category\`),
-                \`stock_quantity\` = VALUES(\`stock_quantity\`),
-                \`min_threshold\` = VALUES(\`min_threshold\`),
-                \`unit\` = VALUES(\`unit\`),
-                \`cost_price\` = VALUES(\`cost_price\`),
-                \`selling_price\` = VALUES(\`selling_price\`),
-                \`location\` = VALUES(\`location\`),
-                \`supplier\` = VALUES(\`supplier\`),
-                \`last_restocked\` = VALUES(\`last_restocked\`),
-                \`available_serials\` = VALUES(\`available_serials\`),
-                \`assignments\` = VALUES(\`assignments\`);
-            `, [
-              item.id,
-              item.sku,
-              item.name,
-              item.category,
-              Number(item.stockQuantity) || 0,
-              Number(item.minThreshold) || 5,
-              item.unit || 'Units',
-              Number(item.costPrice) || 0,
-              Number(item.sellingPrice) || 0,
-              item.location || 'Warehouse Bay 1',
-              item.supplier || 'Shuddham Manufacturing',
-              item.lastRestocked || new Date().toISOString().split('T')[0],
-              JSON.stringify(item.availableSerials || []),
-              JSON.stringify(item.assignments || [])
-            ]);
-          }
-        }
-      } catch (err) {
-        console.warn('[MySQL Database] Inventory sync note:', err.message);
-      }
-    }
-
-    // 10. Auto-create 'bookings' table
+    // Ensure 'bookings' table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`bookings\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -311,13 +139,7 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Ensure customer_id column exists if table was previously created without it
-    try {
-      await connection.query(`ALTER TABLE \`bookings\` ADD COLUMN \`customer_id\` VARCHAR(50) DEFAULT NULL;`);
-    } catch (e) { /* column exists */ }
-
-
-    // 11. Auto-create 'services' table
+    // Ensure 'services' table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`services\` (
         \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -335,76 +157,49 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 12. Sync services from JSON file or mock data to MySQL
-    let servicesToSync = [];
-    if (fs.existsSync(SERVICES_FILE)) {
-      try {
-        const fileContent = fs.readFileSync(SERVICES_FILE, 'utf-8');
-        const parsed = JSON.parse(fileContent);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          servicesToSync = parsed;
-        }
-      } catch (err) {
-        console.warn('[MySQL Database] Services file read error:', err.message);
-      }
-    }
-    if (servicesToSync.length === 0 && Array.isArray(initialServices)) {
-      servicesToSync = initialServices;
-    }
-
-    for (const srv of servicesToSync) {
-      try {
-        await connection.query(`
-          INSERT INTO \`services\` (
-            \`id\`, \`title\`, \`category\`, \`price\`, \`duration\`, \`description\`, \`featured\`, \`rating\`, \`review_count\`
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            \`title\` = VALUES(\`title\`),
-            \`category\` = VALUES(\`category\`),
-            \`price\` = VALUES(\`price\`),
-            \`duration\` = VALUES(\`duration\`),
-            \`description\` = VALUES(\`description\`),
-            \`featured\` = VALUES(\`featured\`),
-            \`rating\` = VALUES(\`rating\`),
-            \`review_count\` = VALUES(\`review_count\`);
-        `, [
-          srv.id,
-          srv.title,
-          srv.category,
-          Number(srv.price) || 0,
-          srv.duration || '1 Hour',
-          srv.description || '',
-          srv.featured ? 1 : 0,
-          parseFloat(srv.rating) || 4.8,
-          parseInt(srv.reviewCount !== undefined ? srv.reviewCount : (srv.review_count !== undefined ? srv.review_count : 100))
-        ]);
-      } catch (sErr) {
-        console.warn('[MySQL Database] Error syncing service', srv.id, sErr.message);
-      }
-    }
+    // Auto-seed primary Super Admin account if not present
+    await connection.query(`
+      INSERT INTO \`users\` (\`id\`, \`full_name\`, \`email\`, \`phone\`, \`password\`, \`role\`, \`city\`)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        \`role\` = VALUES(\`role\`);
+    `, ['usr-superadmin', 'Super Admin', 'superadmin@gmail.com', '9800011100', '123456', 'Super Admin', 'HQ Executive Office']);
 
     connection.release();
     isConnected = true;
     lastDbError = null;
-    console.log('[MySQL Database] Schema verified & fully synced with live data!');
+    console.log('[MySQL Database] Schema verified & active!');
     return true;
   } catch (error) {
     isConnected = false;
     lastDbError = error.message;
-    console.warn(`[MySQL Database] Note: MySQL not reachable (${error.message}). Running with resilient fallback layer.`);
+    console.warn(`[MySQL Database] Connection warning: ${error.message}`);
     return false;
   }
 }
 
 /**
- * Helper to run queries with automatic fallback resilience
+ * Helper to run queries directly against MySQL pool
  */
 export async function query(sql, params = []) {
-  if (!isConnected || !pool) {
-    throw new Error('MySQL connection pool not active');
+  if (!pool) {
+    pool = mysql.createPool(dbConfig);
   }
-  const [rows] = await pool.query(sql, params);
-  return rows;
+  try {
+    const [rows] = await pool.query(sql, params);
+    return rows;
+  } catch (err) {
+    if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ETIMEDOUT') {
+      console.warn('[MySQL Database] Pool connection dropped (' + err.code + '), resetting pool and retrying query...');
+      try {
+        await pool.end().catch(() => {});
+      } catch (e) {}
+      pool = mysql.createPool(dbConfig);
+      const [rows] = await pool.query(sql, params);
+      return rows;
+    }
+    throw err;
+  }
 }
 
 export function isMySQLActive() {

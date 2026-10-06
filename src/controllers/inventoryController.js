@@ -1,124 +1,28 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { initialInventory, initialCategories } from '../data/mockData.js';
 import { query, isMySQLActive } from '../config/db.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const INVENTORY_FILE = path.join(DATA_DIR, 'database_inventory.json');
-const CATEGORIES_FILE = path.join(DATA_DIR, 'database_categories.json');
-
 /**
- * Ensure storage directory and load inventory from disk (fallback)
- */
-function loadInventoryDisk() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(INVENTORY_FILE)) {
-      const seeded = initialInventory.map(item => ({
-        ...item,
-        availableSerials: Array.isArray(item.availableSerials) ? item.availableSerials : [],
-        assignments: Array.isArray(item.assignments) ? item.assignments : []
-      }));
-      fs.writeFileSync(INVENTORY_FILE, JSON.stringify(seeded, null, 2), 'utf-8');
-      return seeded;
-    }
-    const raw = fs.readFileSync(INVENTORY_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.map(item => ({
-        ...item,
-        availableSerials: Array.isArray(item.availableSerials) ? item.availableSerials : [],
-        assignments: Array.isArray(item.assignments) ? item.assignments : []
-      }));
-    }
-    return initialInventory.map(item => ({ ...item, availableSerials: [], assignments: [] }));
-  } catch (err) {
-    console.error('[Inventory DB] Error reading database:', err.message);
-    return initialInventory.map(item => ({ ...item, availableSerials: [], assignments: [] }));
-  }
-}
-
-/**
- * Persist inventory to disk (fallback cache)
- */
-function saveInventoryDisk(data) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(INVENTORY_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    return true;
-  } catch (err) {
-    console.error('[Inventory DB] Error writing database:', err.message);
-    return false;
-  }
-}
-
-/**
- * Load categories from disk (fallback)
- */
-function loadCategoriesDisk() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(CATEGORIES_FILE)) {
-      fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(initialCategories, null, 2), 'utf-8');
-      return [...initialCategories];
-    }
-    const raw = fs.readFileSync(CATEGORIES_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [...initialCategories];
-  } catch (err) {
-    return [...initialCategories];
-  }
-}
-
-/**
- * Persist categories to disk (fallback cache)
- */
-function saveCategoriesDisk(data) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    return true;
-  } catch (err) {
-    return false;
-  }
-}
-
-/**
- * Async Category Loader (MySQL Primary, Disk Fallback)
+ * Async Category Loader (Pure MySQL)
  */
 async function loadCategories() {
   if (isMySQLActive()) {
     try {
       const rows = await query('SELECT * FROM `device_categories` ORDER BY `created_at` ASC');
-      const cats = rows.map(r => ({
+      return rows.map(r => ({
         id: r.id,
         name: r.name,
         description: r.description || '',
         icon: r.icon || 'Box',
         createdAt: r.created_at ? new Date(r.created_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
       }));
-      saveCategoriesDisk(cats);
-      return cats;
     } catch (err) {
-      console.warn('[Category DB] MySQL read failed, falling back to disk:', err.message);
+      console.error('[Category DB] MySQL read failed:', err.message);
     }
   }
-  return loadCategoriesDisk();
+  return [];
 }
 
 /**
- * Async Category Saver
+ * Async Category Saver (Pure MySQL)
  */
 async function saveCategory(cat) {
   if (isMySQLActive()) {
@@ -132,7 +36,7 @@ async function saveCategory(cat) {
           \`icon\` = VALUES(\`icon\`);
       `, [cat.id, cat.name, cat.description || '', cat.icon || 'Box']);
     } catch (err) {
-      console.warn('[Category DB] MySQL save error:', err.message);
+      console.error('[Category DB] MySQL save error:', err.message);
     }
   }
 }
@@ -142,19 +46,19 @@ async function deleteCategoryFromDb(id) {
     try {
       await query('DELETE FROM `device_categories` WHERE `id` = ?', [id]);
     } catch (err) {
-      console.warn('[Category DB] MySQL delete error:', err.message);
+      console.error('[Category DB] MySQL delete error:', err.message);
     }
   }
 }
 
 /**
- * Async Inventory Loader (MySQL Primary, Disk Fallback)
+ * Async Inventory Loader (Pure MySQL)
  */
 async function loadInventory() {
   if (isMySQLActive()) {
     try {
       const rows = await query('SELECT * FROM `inventory` ORDER BY `created_at` DESC');
-      const items = rows.map(r => {
+      return rows.map(r => {
         let availableSerials = [];
         let assignments = [];
         try {
@@ -183,17 +87,15 @@ async function loadInventory() {
           updatedAt: r.updated_at
         };
       });
-      saveInventoryDisk(items);
-      return items;
     } catch (err) {
-      console.warn('[Inventory DB] MySQL read failed, falling back to disk:', err.message);
+      console.error('[Inventory DB] MySQL read failed:', err.message);
     }
   }
-  return loadInventoryDisk();
+  return [];
 }
 
 /**
- * Async Inventory Item Saver
+ * Async Inventory Item Saver (Pure MySQL)
  */
 async function saveInventoryItem(item) {
   if (isMySQLActive()) {
@@ -235,13 +137,12 @@ async function saveInventoryItem(item) {
         JSON.stringify(item.assignments || [])
       ]);
     } catch (err) {
-      console.warn('[Inventory DB] MySQL item save error:', err.message);
+      console.error('[Inventory DB] MySQL item save error:', err.message);
     }
   }
 }
 
 async function saveAllInventory(items) {
-  saveInventoryDisk(items);
   if (isMySQLActive()) {
     for (const item of items) {
       await saveInventoryItem(item);
@@ -254,7 +155,7 @@ async function deleteInventoryFromDb(id) {
     try {
       await query('DELETE FROM `inventory` WHERE `id` = ?', [id]);
     } catch (err) {
-      console.warn('[Inventory DB] MySQL item delete error:', err.message);
+      console.error('[Inventory DB] MySQL item delete error:', err.message);
     }
   }
 }
@@ -622,7 +523,6 @@ export const createInventoryItem = async (req, res) => {
 
     items.unshift(newItem);
     await saveInventoryItem(newItem);
-    saveInventoryDisk(items);
 
     let message = `Inventory item '${newItem.name}' created with ${newItem.stockQuantity} ${newItem.unit} in stock.`;
     if (skippedSerials.length > 0) {
@@ -764,10 +664,7 @@ export const bulkCreateInventoryItems = async (req, res) => {
       });
     }
 
-    saveInventoryDisk(currentItems);
-    if (autoCreatedCategories.length > 0) {
-      saveCategoriesDisk(currentCategories);
-    }
+
 
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
@@ -878,7 +775,6 @@ export const updateInventoryItem = async (req, res) => {
 
     items[index] = updated;
     await saveInventoryItem(updated);
-    saveInventoryDisk(items);
 
     res.json({
       success: true,
@@ -994,7 +890,6 @@ export const assignDeviceToAdmin = async (req, res) => {
     }
 
     await saveInventoryItem(item);
-    saveInventoryDisk(items);
 
     return res.json({
       success: true,
@@ -1040,7 +935,6 @@ export const unassignDevice = async (req, res) => {
     }
 
     await saveInventoryItem(item);
-    saveInventoryDisk(items);
 
     return res.json({
       success: true,
@@ -1123,7 +1017,6 @@ export const adjustStock = async (req, res) => {
 
     item.stockQuantity = newQuantity;
     await saveInventoryItem(item);
-    saveInventoryDisk(items);
 
     let message = `Stock ${type === 'add' ? 'replenished' : 'deducted'} successfully (${type === 'add' ? '+' : '-'}${qtyChange} ${item.unit})`;
     if (type === 'add' && skippedSerials.length > 0) {
@@ -1170,7 +1063,6 @@ export const deleteInventoryItem = async (req, res) => {
 
     const removed = items.splice(index, 1)[0];
     await deleteInventoryFromDb(id);
-    saveInventoryDisk(items);
 
     res.json({
       success: true,
@@ -1233,7 +1125,6 @@ export const createCategory = async (req, res) => {
 
     currentCats.push(newCategory);
     await saveCategory(newCategory);
-    saveCategoriesDisk(currentCats);
 
     res.status(201).json({
       success: true,
@@ -1277,7 +1168,6 @@ export const updateCategory = async (req, res) => {
 
     currentCats[index] = updated;
     await saveCategory(updated);
-    saveCategoriesDisk(currentCats);
 
     const currentInv = await loadInventory();
     let affectedItemsCount = 0;
@@ -1289,7 +1179,6 @@ export const updateCategory = async (req, res) => {
           await saveInventoryItem(item);
         }
       }
-      saveInventoryDisk(currentInv);
     }
 
     const deviceCount = currentInv.filter(i => i.category && i.category.toLowerCase() === trimmed.toLowerCase()).length;
@@ -1326,7 +1215,6 @@ export const deleteCategory = async (req, res) => {
 
     const removed = currentCats.splice(index, 1)[0];
     await deleteCategoryFromDb(id);
-    saveCategoriesDisk(currentCats);
 
     res.json({
       success: true,

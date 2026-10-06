@@ -1,14 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { initialBookings, initialTechnicians } from '../data/mockData.js';
-import { isMySQLActive, query } from '../config/db.js';
-import { getAllUsers } from '../data/usersData.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const BOOKINGS_FILE = path.join(DATA_DIR, 'database_bookings.json');
+import { query } from '../config/db.js';
 
 // Helper to normalize phone numbers strictly to 10 digits
 const normalizePhone = (phoneStr) => {
@@ -23,40 +13,7 @@ const normalizePhone = (phoneStr) => {
   return digits.length > 10 ? digits.slice(-10) : digits;
 };
 
-// Disk Persistence Helpers
-function loadBookingsDisk() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (!fs.existsSync(BOOKINGS_FILE)) {
-      fs.writeFileSync(BOOKINGS_FILE, JSON.stringify(initialBookings, null, 2), 'utf-8');
-      return [...initialBookings];
-    }
-    const raw = fs.readFileSync(BOOKINGS_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-    return [...initialBookings];
-  } catch (err) {
-    console.error('[Bookings DB] Error loading bookings from disk:', err.message);
-    return [...initialBookings];
-  }
-}
-
-function saveBookingsDisk(data) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(BOOKINGS_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    return true;
-  } catch (err) {
-    console.error('[Bookings DB] Error saving bookings to disk:', err.message);
-    return false;
-  }
-}
-
-// Transform MySQL snake_case row to frontend camelCase booking model
+// Transform MySQL row to camelCase booking model
 function mapRowToBooking(row) {
   if (!row) return null;
   const serviceName = row.service_title || row.serviceTitle || row.serviceName || '';
@@ -92,74 +49,42 @@ function mapRowToBooking(row) {
 export const getBookings = async (req, res) => {
   try {
     const { status, customerPhone } = req.query;
-
-    // 1. Try MySQL Database first
-    if (isMySQLActive()) {
-      try {
-        let sql = 'SELECT * FROM bookings WHERE 1=1';
-        const params = [];
-
-        if (status && status !== 'all') {
-          sql += ' AND LOWER(status) = ?';
-          params.push(status.toLowerCase());
-        }
-
-        if (customerPhone) {
-          const cleanPhone = normalizePhone(customerPhone);
-          sql += ' AND (phone LIKE ? OR customer_phone LIKE ?)';
-          params.push(`%${cleanPhone}%`, `%${cleanPhone}%`);
-        }
-
-        sql += ' ORDER BY created_at DESC';
-
-        const rows = await query(sql, params);
-        if (rows) {
-          const mapped = rows.map(mapRowToBooking);
-          return res.json({ success: true, count: mapped.length, data: mapped });
-        }
-      } catch (dbErr) {
-        console.warn('[Bookings DB] MySQL query note:', dbErr.message);
-      }
-    }
-
-    // 2. Disk / Memory Fallback
-    const bookings = loadBookingsDisk();
-    let filtered = [...bookings];
+    let sql = 'SELECT * FROM `bookings` WHERE 1=1';
+    const params = [];
 
     if (status && status !== 'all') {
-      filtered = filtered.filter(b => b.status.toLowerCase() === status.toLowerCase());
+      sql += ' AND LOWER(`status`) = ?';
+      params.push(status.toLowerCase());
     }
 
     if (customerPhone) {
       const cleanPhone = normalizePhone(customerPhone);
-      filtered = filtered.filter(b => normalizePhone(b.customerPhone).includes(cleanPhone));
+      sql += ' AND (`customer_phone` LIKE ?)';
+      params.push(`%${cleanPhone}%`);
     }
 
-    return res.json({ success: true, count: filtered.length, data: filtered });
+    sql += ' ORDER BY `created_at` DESC';
+
+    const rows = await query(sql, params);
+    const mapped = Array.isArray(rows) ? rows.map(mapRowToBooking) : [];
+    return res.json({ success: true, count: mapped.length, data: mapped });
   } catch (error) {
-    console.error('[Bookings Controller] GetBookings Error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to retrieve bookings', error: error.message });
+    console.error('[Bookings Controller] GetBookings Error:', error.message);
+    return res.status(500).json({ success: false, message: 'Database error retrieving bookings', error: error.message });
   }
 };
 
 export const getBookingById = async (req, res) => {
-  const { id } = req.params;
-
-  if (isMySQLActive()) {
-    try {
-      const rows = await query('SELECT * FROM bookings WHERE id = ? LIMIT 1', [id]);
-      if (rows && rows.length > 0) {
-        return res.json({ success: true, data: mapRowToBooking(rows[0]) });
-      }
-    } catch (e) {}
-  }
-
-  const bookings = loadBookingsDisk();
-  const booking = bookings.find(b => b.id === id);
-  if (!booking) {
+  try {
+    const { id } = req.params;
+    const rows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    if (rows && rows.length > 0) {
+      return res.json({ success: true, data: mapRowToBooking(rows[0]) });
+    }
     return res.status(404).json({ success: false, message: 'Booking not found' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Database error', error: error.message });
   }
-  return res.json({ success: true, data: booking });
 };
 
 export const createBooking = async (req, res) => {
@@ -169,7 +94,8 @@ export const createBooking = async (req, res) => {
     const serviceTitle = req.body.serviceTitle || req.body.serviceName;
     const address = req.body.address;
     const date = req.body.date || req.body.bookingDate;
-    const timeSlot = req.body.timeSlot || req.body.slot;
+    const rawSlot = req.body.timeSlot || req.body.slot;
+    const timeSlot = rawSlot ? rawSlot.replace(/^Tomorrow\s*/i, '').trim() : '10:00 AM - 12:00 PM';
     const amount = req.body.amount !== undefined ? req.body.amount : req.body.price;
 
     const cleanPhone = normalizePhone(customerPhone);
@@ -177,7 +103,6 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Valid customer name, 10-digit phone number, service title, and address are required' });
     }
 
-    // Extract customer ID from auth header if present
     let customerId = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -211,322 +136,480 @@ export const createBooking = async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Save to MySQL Table
-    if (isMySQLActive()) {
-      try {
-        await query(`
-          INSERT INTO bookings (
-            id, customer_id, customer_name, customer_phone, service_title, address, date, time_slot,
-            status, technician_id, technician_name, amount, payment_status, tds_before, tds_after
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          newBooking.id,
-          newBooking.customerId,
-          newBooking.customerName,
-          newBooking.customerPhone,
-          newBooking.serviceTitle,
-          newBooking.address,
-          newBooking.date,
-          newBooking.timeSlot,
-          newBooking.status,
-          newBooking.technicianId,
-          newBooking.technicianName,
-          newBooking.amount,
-          newBooking.paymentStatus,
-          newBooking.tdsBefore,
-          newBooking.tdsAfter
-        ]);
-        console.log(`[MySQL Database] Booking "${newBooking.id}" inserted into MySQL bookings table!`);
-      } catch (dbErr) {
-        console.warn('[MySQL Database] Booking insert warning:', dbErr.message);
-      }
-    }
-
-    // 2. Save to Disk JSON database
-    const bookings = loadBookingsDisk();
-    bookings.unshift(newBooking);
-    saveBookingsDisk(bookings);
+    await query(`
+      INSERT INTO \`bookings\` (
+        \`id\`, \`customer_id\`, \`customer_name\`, \`customer_phone\`, \`service_title\`, \`address\`, \`date\`, \`time_slot\`,
+        \`status\`, \`technician_id\`, \`technician_name\`, \`amount\`, \`payment_status\`, \`tds_before\`, \`tds_after\`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      newBooking.id,
+      newBooking.customerId,
+      newBooking.customerName,
+      newBooking.customerPhone,
+      newBooking.serviceTitle,
+      newBooking.address,
+      newBooking.date,
+      newBooking.timeSlot,
+      newBooking.status,
+      newBooking.technicianId,
+      newBooking.technicianName,
+      newBooking.amount,
+      newBooking.paymentStatus,
+      newBooking.tdsBefore,
+      newBooking.tdsAfter
+    ]);
 
     return res.status(201).json({ success: true, message: 'Booking submitted successfully', data: newBooking });
   } catch (error) {
-    console.error('[Bookings Controller] CreateBooking Error:', error);
+    console.error('[Bookings Controller] CreateBooking Error:', error.message);
     return res.status(500).json({ success: false, message: 'Failed to create booking', error: error.message });
   }
 };
 
 export const updateBookingStatus = async (req, res) => {
-  const { id } = req.params;
-  const { status, technicianId, tdsBefore, tdsAfter, customerPhone, phone } = req.body;
+  try {
+    const { id } = req.params;
+    const { status, technicianId, technicianName, tdsBefore, tdsAfter, customerPhone, phone, paymentStatus } = req.body;
 
-  let cleanPhone = null;
-  if (customerPhone || phone) {
-    cleanPhone = normalizePhone(customerPhone || phone);
-    if (cleanPhone.length !== 10) {
-      return res.status(400).json({ success: false, message: 'Customer mobile number must be exactly 10 digits' });
-    }
-  }
-
-  let techName = null;
-  if (technicianId) {
-    const tech = initialTechnicians.find(t => t.id === technicianId);
-    if (tech) techName = tech.name;
-  }
-
-  // 1. Update in MySQL Table
-  if (isMySQLActive()) {
-    try {
-      const updates = [];
-      const params = [];
-      if (status) { updates.push('status = ?'); params.push(status); }
-      if (tdsBefore !== undefined) { updates.push('tds_before = ?'); params.push(tdsBefore); }
-      if (tdsAfter !== undefined) { updates.push('tds_after = ?'); params.push(tdsAfter); }
-      if (technicianId) { updates.push('technician_id = ?'); params.push(technicianId); }
-      if (techName) { updates.push('technician_name = ?'); params.push(techName); }
-      if (cleanPhone) { updates.push('customer_phone = ?'); params.push(cleanPhone); }
-
-      if (updates.length > 0) {
-        params.push(id);
-        await query(`UPDATE bookings SET ${updates.join(', ')} WHERE id = ?`, params);
+    let cleanPhone = null;
+    if (customerPhone || phone) {
+      cleanPhone = normalizePhone(customerPhone || phone);
+      if (cleanPhone.length !== 10) {
+        return res.status(400).json({ success: false, message: 'Customer mobile number must be exactly 10 digits' });
       }
-    } catch (e) {}
-  }
+    }
 
-  // 2. Update Disk file
-  const bookings = loadBookingsDisk();
-  const booking = bookings.find(b => b.id === id);
-  if (!booking) {
-    return res.status(404).json({ success: false, message: 'Booking not found' });
-  }
+    let techName = technicianName || null;
+    let techId = technicianId;
 
-  if (status) booking.status = status;
-  if (tdsBefore !== undefined) booking.tdsBefore = tdsBefore;
-  if (tdsAfter !== undefined) booking.tdsAfter = tdsAfter;
-  if (cleanPhone) booking.customerPhone = cleanPhone;
-  if (technicianId) {
-    booking.technicianId = technicianId;
-    if (techName) booking.technicianName = techName;
-    if (booking.status === 'Pending') booking.status = 'Assigned';
-  }
+    if (req.body.unassign || technicianName === 'Unassigned' || technicianId === 'unassigned' || technicianId === null) {
+      techId = null;
+      techName = 'Unassigned';
+    } else if (technicianId) {
+      const techRows = await query('SELECT full_name FROM users WHERE id = ? LIMIT 1', [technicianId]);
+      if (techRows && techRows.length > 0) {
+        techName = techRows[0].full_name;
+      }
+    }
 
-  saveBookingsDisk(bookings);
-  return res.json({ success: true, message: 'Booking updated', data: booking });
+    const updates = [];
+    const params = [];
+    if (status) { 
+      updates.push('`status` = ?'); 
+      params.push(status); 
+    } else if (techName && techName !== 'Unassigned') {
+      updates.push('`status` = ?'); 
+      params.push('Assigned');
+    }
+
+    if (tdsBefore !== undefined) { updates.push('`tds_before` = ?'); params.push(tdsBefore); }
+    if (tdsAfter !== undefined) { updates.push('`tds_after` = ?'); params.push(tdsAfter); }
+    if (technicianId !== undefined || technicianName !== undefined || req.body.unassign) { 
+      updates.push('`technician_id` = ?'); 
+      params.push(techId); 
+      updates.push('`technician_name` = ?'); 
+      params.push(techName || 'Unassigned'); 
+    }
+    if (cleanPhone) { updates.push('`customer_phone` = ?'); params.push(cleanPhone); }
+    if (paymentStatus !== undefined) { updates.push('`payment_status` = ?'); params.push(paymentStatus); }
+
+    if (updates.length > 0) {
+      params.push(id);
+      await query(`UPDATE \`bookings\` SET ${updates.join(', ')} WHERE \`id\` = ?`, params);
+    }
+
+    const updatedRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    if (!updatedRows || updatedRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    return res.json({ success: true, message: 'Booking updated', data: mapRowToBooking(updatedRows[0]) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Database error', error: error.message });
+  }
 };
 
 export const cancelBooking = async (req, res) => {
-  const { id } = req.params;
-  const { reason } = req.body || {};
-  const cancellationReason = reason || 'Cancelled by customer';
+  try {
+    const { id } = req.params;
+    const { reason } = req.body || {};
+    const cancellationReason = reason || 'Cancelled by customer';
 
-  // 1. Update in MySQL Table
-  if (isMySQLActive()) {
-    try {
-      await query(
-        'UPDATE bookings SET status = ?, cancellation_reason = ? WHERE id = ?',
-        ['Cancelled', cancellationReason, id]
-      );
-    } catch (e) {}
+    await query(
+      'UPDATE `bookings` SET `status` = ?, `cancellation_reason` = ? WHERE `id` = ?',
+      ['Cancelled', cancellationReason, id]
+    );
+
+    const updatedRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    if (!updatedRows || updatedRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    return res.json({ success: true, message: 'Booking cancelled successfully', data: mapRowToBooking(updatedRows[0]) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Database error', error: error.message });
   }
-
-  // 2. Update Disk file
-  const bookings = loadBookingsDisk();
-  const booking = bookings.find(b => b.id === id);
-  if (!booking) {
-    return res.status(404).json({ success: false, message: 'Booking not found' });
-  }
-
-  booking.status = 'Cancelled';
-  booking.cancellationReason = cancellationReason;
-  booking.cancelledAt = new Date().toISOString();
-
-  saveBookingsDisk(bookings);
-  return res.json({ success: true, message: 'Booking cancelled successfully', data: booking });
 };
 
 export const rescheduleBooking = async (req, res) => {
-  const { id } = req.params;
-  const { date, timeSlot } = req.body || {};
+  try {
+    const { id } = req.params;
+    const { date, timeSlot } = req.body || {};
 
-  // 1. Update in MySQL Table
-  if (isMySQLActive()) {
-    try {
-      await query('UPDATE bookings SET date = ?, time_slot = ? WHERE id = ?', [date, timeSlot, id]);
-    } catch (e) {}
+    await query('UPDATE `bookings` SET `date` = ?, `time_slot` = ? WHERE `id` = ?', [date, timeSlot, id]);
+
+    const updatedRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    if (!updatedRows || updatedRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    return res.json({ success: true, message: 'Booking rescheduled successfully', data: mapRowToBooking(updatedRows[0]) });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Database error', error: error.message });
   }
-
-  // 2. Update Disk file
-  const bookings = loadBookingsDisk();
-  const booking = bookings.find(b => b.id === id);
-  if (!booking) {
-    return res.status(404).json({ success: false, message: 'Booking not found' });
-  }
-
-  if (date) booking.date = date;
-  if (timeSlot) booking.timeSlot = timeSlot;
-  booking.updatedAt = new Date().toISOString();
-
-  saveBookingsDisk(bookings);
-  return res.json({ success: true, message: 'Booking rescheduled successfully', data: booking });
 };
 
 export const deleteBooking = async (req, res) => {
-  const { id } = req.params;
-
-  // 1. Delete in MySQL Table
-  if (isMySQLActive()) {
-    try {
-      await query('DELETE FROM bookings WHERE id = ?', [id]);
-    } catch (e) {}
+  try {
+    const { id } = req.params;
+    const result = await query('DELETE FROM `bookings` WHERE `id` = ?', [id]);
+    return res.json({ success: true, message: 'Booking deleted successfully' });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Database error', error: error.message });
   }
-
-  // 2. Delete in Disk file
-  const bookings = loadBookingsDisk();
-  const index = bookings.findIndex(b => b.id === id);
-  if (index === -1) {
-    return res.status(404).json({ success: false, message: 'Booking not found' });
-  }
-
-  bookings.splice(index, 1);
-  saveBookingsDisk(bookings);
-  return res.json({ success: true, message: 'Booking deleted successfully' });
 };
 
-/**
- * @route   GET /api/customer/bookings (also /api/bookings/my-bookings)
- * @desc    Fetch only the authenticated customer's bookings using their JWT token
- * @access  Private (Requires Bearer token, customer ID extracted from token)
- */
 export const getCustomerBookings = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required. Missing or invalid Authorization header.'
-      });
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
     const token = authHeader.split(' ')[1];
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Access token is required.'
-      });
-    }
-
     const parts = token.split('.');
     if (parts.length < 2) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid session token format.'
-      });
+      return res.status(401).json({ success: false, message: 'Invalid session token' });
     }
 
-    let payload;
-    try {
-      payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    } catch (parseErr) {
-      return res.status(401).json({
-        success: false,
-        message: 'Failed to decode authorization token payload.'
-      });
-    }
-
-    if (payload.expiresAt && Date.now() > payload.expiresAt) {
-      return res.status(401).json({
-        success: false,
-        message: 'Session has expired. Please sign in again.'
-      });
-    }
-
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
     const customerId = payload.userId || payload.id || payload.sub;
-    if (!customerId) {
-      return res.status(401).json({
-        success: false,
-        message: 'Unauthorized: No user identifier present in token.'
-      });
-    }
 
-    // Lookup customer profile from database to also match by their registered phone or email
-    let userRecord = null;
-    if (isMySQLActive()) {
-      try {
-        const rows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [customerId]);
-        if (rows && rows.length > 0) userRecord = rows[0];
-      } catch (e) {}
-    }
-    if (!userRecord) {
-      try {
-        const allUsers = getAllUsers();
-        userRecord = allUsers.find(u => u.id === customerId);
-      } catch (e) {}
-    }
-
+    const userRows = await query('SELECT * FROM users WHERE id = ? LIMIT 1', [customerId]);
+    const userRecord = userRows && userRows.length > 0 ? userRows[0] : null;
     const userPhone = userRecord ? normalizePhone(userRecord.phone) : '';
-    const userEmail = userRecord && userRecord.email ? userRecord.email.toLowerCase().trim() : '';
+
+    let sql = `
+      SELECT * FROM \`bookings\` 
+      WHERE (\`customer_id\` = ? OR (? != '' AND \`customer_phone\` LIKE ?))
+    `;
+    const params = [customerId, userPhone, `%${userPhone}%`];
 
     const { status } = req.query;
+    if (status && status !== 'all') {
+      sql += ' AND LOWER(`status`) = ?';
+      params.push(status.toLowerCase());
+    }
 
-    // 1. Fetch from MySQL if active
-    if (isMySQLActive()) {
-      try {
-        let sql = `
-          SELECT * FROM bookings 
-          WHERE (customer_id = ? 
-             OR (? != '' AND (customer_phone LIKE ? OR phone LIKE ?)))
-        `;
-        const params = [customerId, userPhone, `%${userPhone}%`, `%${userPhone}%`];
+    sql += ' ORDER BY `created_at` DESC';
+    const rows = await query(sql, params);
+    const mapped = Array.isArray(rows) ? rows.map(mapRowToBooking) : [];
 
-        if (status && status !== 'all') {
-          sql += ' AND LOWER(status) = ?';
-          params.push(status.toLowerCase());
-        }
+    return res.status(200).json({
+      success: true,
+      count: mapped.length,
+      customerId,
+      data: mapped
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to retrieve customer bookings', error: error.message });
+  }
+};
 
-        sql += ' ORDER BY created_at DESC';
+/**
+ * Assign a service booking to a technician / staff
+ * POST /api/bookings/:id/assign or PATCH /api/bookings/:id/assign
+ */
+export const assignBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { technicianId, technicianName, status, notes, date, timeSlot } = req.body;
 
-        const rows = await query(sql, params);
-        if (rows) {
-          const mapped = rows.map(mapRowToBooking);
-          return res.status(200).json({
-            success: true,
-            count: mapped.length,
-            customerId,
-            data: mapped
-          });
-        }
-      } catch (dbErr) {
-        console.warn('[Bookings Controller] MySQL getCustomerBookings warning:', dbErr.message);
+    if (!technicianId && !technicianName) {
+      return res.status(400).json({
+        success: false,
+        message: 'technicianId or technicianName is required to assign this booking'
+      });
+    }
+
+    // 1. Verify booking exists
+    const bookingRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    if (!bookingRows || bookingRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Booking with ID "${id}" not found`
+      });
+    }
+
+    const currentBooking = bookingRows[0];
+    if (currentBooking.status && currentBooking.status.toLowerCase() === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot assign a cancelled booking. Please reactivate or reschedule the booking first.'
+      });
+    }
+
+    // 2. Resolve technician details
+    let resolvedTechId = technicianId || null;
+    let resolvedTechName = technicianName || null;
+    let technicianPhone = null;
+
+    if (technicianId) {
+      const userRows = await query('SELECT id, full_name, phone, role FROM `users` WHERE `id` = ? LIMIT 1', [technicianId]);
+      if (userRows && userRows.length > 0) {
+        resolvedTechId = userRows[0].id;
+        resolvedTechName = userRows[0].full_name;
+        technicianPhone = userRows[0].phone ? normalizePhone(userRows[0].phone) : null;
+      } else if (!technicianName) {
+        return res.status(404).json({
+          success: false,
+          message: `Technician with ID "${technicianId}" not found in database`
+        });
+      }
+    } else if (technicianName) {
+      // Lookup by name in users table
+      const userRows = await query('SELECT id, full_name, phone, role FROM `users` WHERE LOWER(`full_name`) = LOWER(?) LIMIT 1', [technicianName.trim()]);
+      if (userRows && userRows.length > 0) {
+        resolvedTechId = userRows[0].id;
+        resolvedTechName = userRows[0].full_name;
+        technicianPhone = userRows[0].phone ? normalizePhone(userRows[0].phone) : null;
+      } else {
+        resolvedTechName = technicianName.trim();
       }
     }
 
-    // 2. Fetch from Disk / Memory Fallback
-    const bookings = loadBookingsDisk();
-    let filtered = bookings.filter(b => {
-      // Must match customerId or user phone or user email
-      const matchesId = b.customerId === customerId || b.customer_id === customerId;
-      const bPhone = normalizePhone(b.customerPhone || b.phone || '');
-      const matchesPhone = userPhone.length >= 7 && (bPhone.includes(userPhone) || userPhone.includes(bPhone));
-      const bEmail = (b.customerEmail || b.email || '').toLowerCase().trim();
-      const matchesEmail = userEmail.length > 3 && bEmail === userEmail;
+    const nextStatus = status || 'Assigned';
+    const targetDate = date || currentBooking.date;
+    const targetSlot = timeSlot || currentBooking.time_slot;
+    const { force, overrideConflict } = req.body;
 
-      return matchesId || matchesPhone || matchesEmail;
-    });
+    // 3. Schedule Conflict / Clash Detection
+    let conflictWarning = null;
+    if (resolvedTechId || resolvedTechName) {
+      const conflictSql = `
+        SELECT id, customer_name, service_title, date, time_slot, status 
+        FROM \`bookings\` 
+        WHERE \`id\` != ? 
+          AND (\`technician_id\` = ? OR (\`technician_name\` = ? AND \`technician_name\` != 'Unassigned'))
+          AND \`date\` = ? 
+          AND \`time_slot\` = ? 
+          AND LOWER(\`status\`) NOT IN ('cancelled', 'completed')
+        LIMIT 1
+      `;
+      const conflictRows = await query(conflictSql, [id, resolvedTechId, resolvedTechName, targetDate, targetSlot]);
 
-    if (status && status !== 'all') {
-      filtered = filtered.filter(b => b.status && b.status.toLowerCase() === status.toLowerCase());
+      if (conflictRows && conflictRows.length > 0) {
+        const clash = conflictRows[0];
+        conflictWarning = `Assigned (${resolvedTechName} also scheduled for #${clash.id})`;
+      }
     }
 
-    const formatted = filtered.map(b => mapRowToBooking(b));
+    // 4. Update the booking in MySQL
+    const updates = ['`technician_id` = ?', '`technician_name` = ?', '`status` = ?'];
+    const params = [resolvedTechId, resolvedTechName, nextStatus];
+
+    if (date) {
+      updates.push('`date` = ?');
+      params.push(date);
+    }
+    if (timeSlot) {
+      updates.push('`time_slot` = ?');
+      params.push(timeSlot);
+    }
+
+    params.push(id);
+    await query(`UPDATE \`bookings\` SET ${updates.join(', ')} WHERE \`id\` = ?`, params);
+
+    // 4. Retrieve updated booking
+    const updatedRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    const updatedBooking = mapRowToBooking(updatedRows[0]);
+
     return res.status(200).json({
       success: true,
-      count: formatted.length,
-      customerId,
-      data: formatted
+      message: conflictWarning 
+        ? `Booking #${id} assigned to ${resolvedTechName} (Warning: ${conflictWarning})`
+        : `Booking #${id} successfully assigned to ${resolvedTechName}`,
+      data: updatedBooking,
+      warning: conflictWarning || null,
+      assignment: {
+        bookingId: id,
+        technicianId: resolvedTechId,
+        technicianName: resolvedTechName,
+        technicianPhone: technicianPhone,
+        status: nextStatus,
+        assignedAt: new Date().toISOString(),
+        notes: notes || null,
+        conflictWarning: conflictWarning || null
+      }
     });
   } catch (error) {
-    console.error('[Bookings Controller] getCustomerBookings error:', error);
+    console.error('[Bookings Controller] assignBooking Error:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to retrieve customer bookings',
+      message: 'Failed to assign booking',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Unassign technician from a booking and revert to Pending/Confirmed
+ * POST /api/bookings/:id/unassign or PATCH /api/bookings/:id/unassign
+ */
+export const unassignBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body || {};
+
+    const bookingRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    if (!bookingRows || bookingRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Booking with ID "${id}" not found`
+      });
+    }
+
+    const nextStatus = status || 'Pending';
+
+    await query(
+      "UPDATE `bookings` SET `technician_id` = NULL, `technician_name` = 'Unassigned', `status` = ? WHERE `id` = ?",
+      [nextStatus, id]
+    );
+
+    const updatedRows = await query('SELECT * FROM `bookings` WHERE `id` = ? LIMIT 1', [id]);
+    const updatedBooking = mapRowToBooking(updatedRows[0]);
+
+    return res.status(200).json({
+      success: true,
+      message: `Booking #${id} unassigned successfully and reverted to ${nextStatus}`,
+      data: updatedBooking
+    });
+  } catch (error) {
+    console.error('[Bookings Controller] unassignBooking Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to unassign booking',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Bulk assign multiple bookings to a technician
+ * POST /api/bookings/bulk-assign
+ */
+export const bulkAssignBookings = async (req, res) => {
+  try {
+    const { bookingIds, technicianId, technicianName, status } = req.body;
+
+    if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'bookingIds must be a non-empty array of booking IDs'
+      });
+    }
+
+    if (!technicianId && !technicianName) {
+      return res.status(400).json({
+        success: false,
+        message: 'technicianId or technicianName is required for bulk assignment'
+      });
+    }
+
+    // Resolve technician
+    let resolvedTechId = technicianId || null;
+    let resolvedTechName = technicianName || null;
+
+    if (technicianId) {
+      const userRows = await query('SELECT id, full_name, phone FROM `users` WHERE `id` = ? LIMIT 1', [technicianId]);
+      if (userRows && userRows.length > 0) {
+        resolvedTechId = userRows[0].id;
+        resolvedTechName = userRows[0].full_name;
+      }
+    } else if (technicianName) {
+      const userRows = await query('SELECT id, full_name, phone FROM `users` WHERE LOWER(`full_name`) = LOWER(?) LIMIT 1', [technicianName.trim()]);
+      if (userRows && userRows.length > 0) {
+        resolvedTechId = userRows[0].id;
+        resolvedTechName = userRows[0].full_name;
+      } else {
+        resolvedTechName = technicianName.trim();
+      }
+    }
+
+    const nextStatus = status || 'Assigned';
+    const placeholders = bookingIds.map(() => '?').join(',');
+
+    await query(
+      `UPDATE \`bookings\` 
+       SET \`technician_id\` = ?, \`technician_name\` = ?, \`status\` = ? 
+       WHERE \`id\` IN (${placeholders}) AND LOWER(\`status\`) != 'cancelled'`,
+      [resolvedTechId, resolvedTechName, nextStatus, ...bookingIds]
+    );
+
+    const updatedRows = await query(`SELECT * FROM \`bookings\` WHERE \`id\` IN (${placeholders})`, bookingIds);
+    const mapped = Array.isArray(updatedRows) ? updatedRows.map(mapRowToBooking) : [];
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully assigned ${mapped.length} bookings to ${resolvedTechName}`,
+      count: mapped.length,
+      technicianId: resolvedTechId,
+      technicianName: resolvedTechName,
+      data: mapped
+    });
+  } catch (error) {
+    console.error('[Bookings Controller] bulkAssignBookings Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to bulk assign bookings',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get all bookings assigned to a specific technician
+ * GET /api/bookings/technician/:technicianId
+ */
+export const getTechnicianBookings = async (req, res) => {
+  try {
+    const { technicianId } = req.params;
+    const { status } = req.query;
+
+    let sql = 'SELECT * FROM `bookings` WHERE (`technician_id` = ? OR `technician_name` = ?)';
+    const params = [technicianId, technicianId];
+
+    if (status && status !== 'all') {
+      sql += ' AND LOWER(`status`) = ?';
+      params.push(status.toLowerCase());
+    }
+
+    sql += ' ORDER BY `created_at` DESC';
+
+    const rows = await query(sql, params);
+    const mapped = Array.isArray(rows) ? rows.map(mapRowToBooking) : [];
+
+    return res.status(200).json({
+      success: true,
+      technicianId,
+      count: mapped.length,
+      data: mapped
+    });
+  } catch (error) {
+    console.error('[Bookings Controller] getTechnicianBookings Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve technician bookings',
       error: error.message
     });
   }

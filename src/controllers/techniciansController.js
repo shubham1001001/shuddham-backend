@@ -48,6 +48,15 @@ export const updateTechnicianStatus = async (req, res) => {
   }
 };
 
-export { updateUser as updateTechnician, deleteUser as deleteTechnician } from './authController.js';
+import { createUser, updateUser, deleteUser } from './authController.js';
 
+export const createTechnician = async (req, res) => {
+  try {
+    req.body.role = req.body.role || 'Technician';
+    return await createUser(req, res);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 
+export { updateUser as updateTechnician, deleteUser as deleteTechnician };

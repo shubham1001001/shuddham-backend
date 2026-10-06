@@ -2,6 +2,7 @@ import express from 'express';
 import { 
   getTechnicians, 
   getTechnicianById, 
+  createTechnician,
   updateTechnicianStatus,
   updateTechnician,
   deleteTechnician 
@@ -10,6 +11,7 @@ import {
 const router = express.Router();
 
 router.get('/', getTechnicians);
+router.post('/', createTechnician);
 router.get('/:id', getTechnicianById);
 router.patch('/:id/status', updateTechnicianStatus);
 router.put('/:id', updateTechnician);

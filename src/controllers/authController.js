@@ -4,6 +4,7 @@ import {
   otpStore, 
   saveUserToDatabase, 
   getAllUsers, 
+  getAllUsersFromDatabase,
   updateUserInDatabase, 
   deleteUserFromDatabase, 
   getUserById, 
@@ -203,8 +204,8 @@ export const adminLogin = async (req, res) => {
       });
     }
 
-    // Strict Role Verification for Admin Portal
-    if (user.role !== 'Super Admin' && user.role !== 'Admin' && user.role !== 'Staff') {
+    // Strict Role Verification for Admin Portal (Only Super Admin and Admin)
+    if (user.role !== 'Super Admin' && user.role !== 'Admin') {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Only Super Admin and registered Administrators can access the Admin Panel.'
@@ -369,7 +370,16 @@ export const createUser = async (req, res) => {
       });
     }
 
-    const assignedRole = role ? role : 'Customer';
+    let assignedRole = 'Customer';
+    if (role && (role.toString().toLowerCase() === 'admin' || role.toString().toLowerCase() === 'administrator')) {
+      assignedRole = 'Admin';
+    } else if (role && (role.toString().toLowerCase() === 'technician' || role.toString().toLowerCase() === 'staff')) {
+      assignedRole = 'Technician';
+    } else if (role && role.toString().toLowerCase() === 'customer') {
+      assignedRole = 'Customer';
+    } else if (role === 'Super Admin') {
+      assignedRole = 'Super Admin';
+    }
 
     const newUser = {
       id: `usr-${Date.now()}`,
@@ -867,6 +877,59 @@ export const getAllAdminsList = async (req, res) => {
 };
 
 /**
+ * @route   GET /api/users
+ * @desc    Get all registered users across the system (Super Admin, Admins, Customers)
+ * @access  Super Admin
+ */
+export const getAllUsersDirectory = async (req, res) => {
+  try {
+    let rows = [];
+    if (isMySQLActive()) {
+      rows = await query(`
+        SELECT id, full_name, email, phone, role, city, is_active, created_at 
+        FROM \`users\` 
+        ORDER BY 
+          CASE 
+            WHEN role = 'Super Admin' THEN 1 
+            WHEN role = 'Admin' THEN 2 
+            ELSE 3 
+          END ASC, 
+          created_at DESC
+      `);
+    } else {
+      rows = getAllUsers();
+    }
+
+    const mapped = (rows || []).map(r => ({
+      id: r.id,
+      name: r.full_name || r.name,
+      fullName: r.full_name || r.fullName || r.name,
+      email: r.email,
+      phone: r.phone ? normalizePhone(r.phone) : '',
+      role: r.role || 'Customer',
+      specialization: r.role === 'Super Admin' ? 'Master Authority' : (r.role === 'Admin' ? 'Administrator' : 'Customer'),
+      city: r.city || 'Operations HQ',
+      location: r.city || 'Operations HQ',
+      status: r.is_active === 0 ? 'Inactive' : 'Active',
+      createdAt: r.created_at || r.createdAt
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: mapped.length,
+      data: mapped
+    });
+  } catch (error) {
+    console.error('[AuthController] Error fetching all users directory:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve users directory',
+      error: error.message
+    });
+  }
+};
+
+/**
  * @route   GET /api/auth/users/:id (and /api/admins/:id)
  * @desc    Get administrator details by ID
  * @access  Super Admin
@@ -1001,13 +1064,22 @@ export const updateUser = async (req, res) => {
       }
     }
 
+    let validRole = undefined;
+    if (role) {
+      const lower = role.toString().toLowerCase();
+      if (lower === 'admin' || lower === 'administrator') validRole = 'Admin';
+      else if (lower === 'technician' || lower === 'staff') validRole = 'Technician';
+      else if (lower === 'customer') validRole = 'Customer';
+      else if (role === 'Super Admin') validRole = 'Super Admin';
+    }
+
     const updates = {
       fullName: targetName || undefined,
       email: cleanEmail,
       phone: cleanPhone,
       city: (city || location)?.trim(),
       password: password?.trim() || undefined,
-      role: role || undefined,
+      role: validRole,
       status: status || undefined
     };
 

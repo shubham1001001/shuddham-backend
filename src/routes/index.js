@@ -16,6 +16,7 @@ import {
   updateCategory,
   deleteCategory
 } from '../controllers/inventoryController.js';
+import { getAllUsersDirectory } from '../controllers/authController.js';
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ categoryRouter.post('/', createCategory);
 categoryRouter.put('/:id', updateCategory);
 categoryRouter.delete('/:id', deleteCategory);
 
+router.get('/users', getAllUsersDirectory);
 router.use('/customer', customerRoutes);
 router.use('/auth', authRoutes);
 router.use('/admins', adminRoutes);
