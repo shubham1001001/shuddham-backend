@@ -1,12 +1,13 @@
-import { initMqttService, publishMessage } from '../services/mqttService.js';
-import { initDatabase, query } from '../config/db.js';
+import { initMqtt, publish } from '../mqtt/index.js';
+import { initDatabase } from '../config/db.js';
+import { TelemetryRepository } from '../repositories/telemetryRepository.js';
 
-async function test() {
+async function testCleanArchitecture() {
   await initDatabase();
-  const client = initMqttService();
+  const client = initMqtt();
 
   client.on('connect', async () => {
-    console.log('Connected! Waiting 2 seconds then publishing test payload...');
+    console.log('Connected! Testing clean architecture pipeline in 2s...');
     setTimeout(async () => {
       const topic = 'Shudhham/tds/v1/data';
       const payload = {
@@ -22,21 +23,21 @@ async function test() {
       };
 
       console.log('Publishing message:', payload);
-      await publishMessage(topic, payload);
+      await publish(topic, payload);
 
       setTimeout(async () => {
-        const rows = await query('SELECT * FROM device_latest_telemetry WHERE dev_id = ?', ['2805a520c400']);
-        console.log('Database Result from device_latest_telemetry:');
-        console.log(JSON.stringify(rows, null, 2));
+        const latest = await TelemetryRepository.getLatestByDeviceId('2805a520c400');
+        console.log('Latest State via TelemetryRepository:');
+        console.log(JSON.stringify(latest, null, 2));
 
-        const history = await query('SELECT * FROM device_telemetry WHERE dev_id = ? ORDER BY created_at DESC LIMIT 1', ['2805a520c400']);
-        console.log('Database Result from device_telemetry:');
+        const history = await TelemetryRepository.getHistoryByDeviceId('2805a520c400', 1);
+        console.log('History Log via TelemetryRepository:');
         console.log(JSON.stringify(history, null, 2));
 
         process.exit(0);
-      }, 3000);
+      }, 2500);
     }, 2000);
   });
 }
 
-test();
+testCleanArchitecture();

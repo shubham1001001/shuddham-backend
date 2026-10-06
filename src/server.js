@@ -48,7 +48,7 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 import { initDatabase } from './config/db.js';
-import { initMqttService } from './services/mqttService.js';
+import { initMqtt } from './mqtt/index.js';
 
 const PORT = config.port;
 app.listen(PORT, async () => {
@@ -56,6 +56,6 @@ app.listen(PORT, async () => {
   console.log(`[Shuddham API] Health check at http://localhost:${PORT}/api/health`);
   // Initialize MySQL Connection & Schema
   await initDatabase();
-  // Initialize AWS IoT Core MQTT Subscriber
-  initMqttService();
+  // Initialize AWS IoT Core MQTT Module
+  initMqtt();
 });

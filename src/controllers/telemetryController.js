@@ -1,14 +1,14 @@
-import { query } from '../config/db.js';
-import { getMqttStatus, publishMessage, processAndSaveTelemetry } from '../services/mqttService.js';
+import { TelemetryRepository } from '../repositories/telemetryRepository.js';
+import { getMqttStatus, publish } from '../mqtt/index.js';
+import { handleTdsTelemetry } from '../mqtt/handlers/tdsTelemetryHandler.js';
 
 /**
+ * GET /api/telemetry/latest
  * Get all latest device telemetry states
  */
 export async function getLatestDevicesTelemetry(req, res) {
   try {
-    const rows = await query(
-      `SELECT * FROM device_latest_telemetry ORDER BY last_updated DESC`
-    );
+    const rows = await TelemetryRepository.getAllLatest();
 
     res.json({
       success: true,
@@ -26,17 +26,15 @@ export async function getLatestDevicesTelemetry(req, res) {
 }
 
 /**
+ * GET /api/telemetry/:devId/latest
  * Get latest telemetry for a specific device
  */
 export async function getDeviceLatestTelemetry(req, res) {
   try {
     const { devId } = req.params;
-    const rows = await query(
-      `SELECT * FROM device_latest_telemetry WHERE dev_id = ? LIMIT 1`,
-      [devId]
-    );
+    const deviceState = await TelemetryRepository.getLatestByDeviceId(devId);
 
-    if (rows.length === 0) {
+    if (!deviceState) {
       return res.status(404).json({
         success: false,
         message: `No telemetry found for device ID: ${devId}`
@@ -45,7 +43,7 @@ export async function getDeviceLatestTelemetry(req, res) {
 
     res.json({
       success: true,
-      data: rows[0]
+      data: deviceState
     });
   } catch (err) {
     res.status(500).json({
@@ -57,6 +55,7 @@ export async function getDeviceLatestTelemetry(req, res) {
 }
 
 /**
+ * GET /api/telemetry/:devId
  * Get historical telemetry logs for a specific device
  */
 export async function getDeviceTelemetryHistory(req, res) {
@@ -65,20 +64,12 @@ export async function getDeviceTelemetryHistory(req, res) {
     const limit = Math.min(Number(req.query.limit) || 100, 1000);
     const offset = Number(req.query.offset) || 0;
 
-    const rows = await query(
-      `SELECT * FROM device_telemetry WHERE dev_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [devId, limit, offset]
-    );
-
-    const countRes = await query(
-      `SELECT COUNT(*) as total FROM device_telemetry WHERE dev_id = ?`,
-      [devId]
-    );
+    const { rows, total } = await TelemetryRepository.getHistoryByDeviceId(devId, limit, offset);
 
     res.json({
       success: true,
       data: rows,
-      total: countRes[0]?.total || 0,
+      total,
       limit,
       offset
     });
@@ -92,7 +83,8 @@ export async function getDeviceTelemetryHistory(req, res) {
 }
 
 /**
- * Manually ingest or test telemetry over HTTP (matches MQTT processing)
+ * POST /api/telemetry/ingest
+ * Manually ingest or test telemetry over HTTP (passes through MQTT handler)
  */
 export async function ingestTelemetryHttp(req, res) {
   try {
@@ -106,11 +98,11 @@ export async function ingestTelemetryHttp(req, res) {
       });
     }
 
-    await processAndSaveTelemetry(topic, payload, JSON.stringify(payload));
+    await handleTdsTelemetry(topic, Buffer.from(JSON.stringify(payload)));
 
     res.json({
       success: true,
-      message: 'Telemetry ingested and stored successfully',
+      message: 'Telemetry processed and stored successfully',
       data: payload
     });
   } catch (err) {
@@ -123,6 +115,7 @@ export async function ingestTelemetryHttp(req, res) {
 }
 
 /**
+ * POST /api/telemetry/publish
  * Publish command or test message to MQTT topic
  */
 export async function publishMqttCommand(req, res) {
@@ -135,7 +128,7 @@ export async function publishMqttCommand(req, res) {
       });
     }
 
-    await publishMessage(topic, message);
+    await publish(topic, message);
 
     res.json({
       success: true,
@@ -151,6 +144,7 @@ export async function publishMqttCommand(req, res) {
 }
 
 /**
+ * GET /api/telemetry/status
  * Get MQTT connection status and topic info
  */
 export async function getMqttServiceStatus(req, res) {
