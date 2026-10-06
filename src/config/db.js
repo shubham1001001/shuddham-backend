@@ -179,6 +179,48 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // Ensure 'device_telemetry' table for historical readings
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`device_telemetry\` (
+        \`id\` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        \`dev_id\` VARCHAR(100) NOT NULL,
+        \`ts\` VARCHAR(100) DEFAULT NULL,
+        \`status\` VARCHAR(50) DEFAULT 'online',
+        \`temp\` DECIMAL(6,2) DEFAULT NULL,
+        \`tds1\` INT DEFAULT NULL,
+        \`tds2\` INT DEFAULT NULL,
+        \`mode\` VARCHAR(50) DEFAULT NULL,
+        \`tds_range\` INT DEFAULT NULL,
+        \`fan\` VARCHAR(50) DEFAULT NULL,
+        \`topic\` VARCHAR(255) DEFAULT 'Shudhham/tds/v1/data',
+        \`raw_payload\` LONGTEXT DEFAULT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_dev_id\` (\`dev_id\`),
+        INDEX \`idx_ts\` (\`ts\`),
+        INDEX \`idx_topic\` (\`topic\`),
+        INDEX \`idx_created_at\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // Ensure 'device_latest_telemetry' table for instantaneous device status
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`device_latest_telemetry\` (
+        \`dev_id\` VARCHAR(100) NOT NULL PRIMARY KEY,
+        \`ts\` VARCHAR(100) DEFAULT NULL,
+        \`status\` VARCHAR(50) DEFAULT 'online',
+        \`temp\` DECIMAL(6,2) DEFAULT NULL,
+        \`tds1\` INT DEFAULT NULL,
+        \`tds2\` INT DEFAULT NULL,
+        \`mode\` VARCHAR(50) DEFAULT NULL,
+        \`tds_range\` INT DEFAULT NULL,
+        \`fan\` VARCHAR(50) DEFAULT NULL,
+        \`last_topic\` VARCHAR(255) DEFAULT NULL,
+        \`raw_payload\` LONGTEXT DEFAULT NULL,
+        \`last_updated\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_latest_status\` (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     connection.release();
     isConnected = true;
     lastDbError = null;
