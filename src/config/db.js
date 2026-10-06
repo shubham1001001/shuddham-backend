@@ -165,6 +165,20 @@ export async function initDatabase() {
         \`role\` = VALUES(\`role\`);
     `, ['usr-superadmin', 'Super Admin', 'superadmin@gmail.com', '9800011100', '123456', 'Super Admin', 'HQ Executive Office']);
 
+    // Ensure 'firmwares' table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`firmwares\` (
+        \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
+        \`hardware_version\` VARCHAR(100) NOT NULL,
+        \`firmware_version\` VARCHAR(100) NOT NULL,
+        \`bin_file_path\` VARCHAR(255) NOT NULL,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_hardware_version\` (\`hardware_version\`),
+        INDEX \`idx_firmware_version\` (\`firmware_version\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     connection.release();
     isConnected = true;
     lastDbError = null;
@@ -192,8 +206,8 @@ export async function query(sql, params = []) {
     if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ETIMEDOUT') {
       console.warn('[MySQL Database] Pool connection dropped (' + err.code + '), resetting pool and retrying query...');
       try {
-        await pool.end().catch(() => {});
-      } catch (e) {}
+        await pool.end().catch(() => { });
+      } catch (e) { }
       pool = mysql.createPool(dbConfig);
       const [rows] = await pool.query(sql, params);
       return rows;

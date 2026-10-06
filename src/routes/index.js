@@ -10,6 +10,7 @@ import inventoryRoutes from './inventoryRoutes.js';
 import supportRoutes from './supportRoutes.js';
 import waterReportsRoutes from './waterReportsRoutes.js';
 import customerRoutes from './customerRoutes.js';
+import firmwaresRoutes from './firmwaresRoutes.js';
 import {
   getCategories,
   createCategory,
@@ -40,6 +41,7 @@ router.use('/inventory', inventoryRoutes);
 router.use('/categories', categoryRouter);
 router.use('/support', supportRoutes);
 router.use('/water-reports', waterReportsRoutes);
+router.use('/firmwares', firmwaresRoutes);
 
 export default router;
 
