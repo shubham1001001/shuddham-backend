@@ -64,23 +64,23 @@ export const getLatestFirmware = async (req, res) => {
         const rows = await query('SELECT * FROM `firmwares` ORDER BY `created_at` DESC LIMIT 1');
 
         if (rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'No firmwares found' });
+            // Still returning some error format, but keeping it simple. 
+            // Or maybe just status 404 with empty object if they expect pure json.
+            return res.status(404).json({ error: 'No firmwares found' });
         }
 
         const r = rows[0];
         const formattedData = {
-            upload: `${req.protocol}://${req.get('host')}${r.bin_file_path}`,
-            hardware_v: r.hardware_version,
-            firmware_v: r.firmware_version,
-            bin_file: r.bin_file_path.split('/').pop(),
-            created_at: r.created_at,
-            id: r.id
+            firmwareVersion: r.firmware_version,
+            hardwareVersion: r.hardware_version,
+            otaUrl: `${req.protocol}://${req.get('host')}${r.bin_file_path}`,
+            processOta: 1
         };
 
-        res.json({ success: true, data: formattedData });
+        res.json(formattedData);
     } catch (err) {
         console.error('Error fetching latest firmware:', err);
-        res.status(500).json({ success: false, message: 'Server error fetching latest firmware' });
+        res.status(500).json({ error: 'Server error' });
     }
 };
 
