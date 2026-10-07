@@ -387,7 +387,7 @@ export const createUser = async (req, res) => {
       phone: cleanPhone,
       email: cleanEmail,
       password: password,
-      city: city ? city.trim() : 'Green Valley Hub',
+      city: city ? city.trim() : '',
       role: assignedRole,
       isProvisioned: true,
       createdAt: new Date().toISOString()

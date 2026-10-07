@@ -103,7 +103,7 @@ export async function saveUserToDatabase(newUser) {
         newUser.phone || '',
         newUser.password || '123456',
         newUser.role,
-        newUser.city || newUser.location || 'Green Valley Hub',
+        newUser.city || newUser.location || '',
         newUser.status === 'Inactive' ? 0 : 1
       ]);
     }
