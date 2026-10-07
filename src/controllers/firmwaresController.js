@@ -1,5 +1,60 @@
+import fs from 'fs';
+import path from 'path';
 import { query } from '../config/db.js';
 import crypto from 'crypto';
+
+export const syncFirmwaresFromDisk = async (req, res) => {
+    try {
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadDir)) {
+            return res.json({ success: true, message: 'Uploads directory does not exist', restored: [] });
+        }
+
+        const restored = [];
+        const hwFolders = fs.readdirSync(uploadDir);
+
+        for (const hv of hwFolders) {
+            const hvPath = path.join(uploadDir, hv);
+            if (!fs.statSync(hvPath).isDirectory()) continue;
+
+            const fwFolders = fs.readdirSync(hvPath);
+            for (const fv of fwFolders) {
+                const fvPath = path.join(hvPath, fv);
+                if (!fs.statSync(fvPath).isDirectory()) continue;
+
+                const files = fs.readdirSync(fvPath);
+                for (const file of files) {
+                    if (path.extname(file).toLowerCase() === '.bin') {
+                        const bin_file_path = `/uploads/${hv}/${fv}/${file}`;
+                        const existing = await query(
+                            'SELECT id FROM `firmwares` WHERE `bin_file_path` = ?',
+                            [bin_file_path]
+                        );
+
+                        if (existing.length === 0) {
+                            const id = crypto.randomUUID();
+                            await query(
+                                'INSERT INTO `firmwares` (`id`, `hardware_version`, `firmware_version`, `bin_file_path`) VALUES (?, ?, ?, ?)',
+                                [id, hv, fv, bin_file_path]
+                            );
+                            restored.push({ id, hardware_version: hv, firmware_version: fv, bin_file_path });
+                        }
+                    }
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Scanned disk and restored ${restored.length} firmware(s)`,
+            count: restored.length,
+            restored
+        });
+    } catch (err) {
+        console.error('Error syncing firmwares from disk:', err);
+        res.status(500).json({ success: false, message: 'Server error syncing firmwares from disk' });
+    }
+};
 
 export const createFirmware = async (req, res) => {
     try {

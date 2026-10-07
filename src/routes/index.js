@@ -12,6 +12,7 @@ import waterReportsRoutes from './waterReportsRoutes.js';
 import customerRoutes from './customerRoutes.js';
 import firmwaresRoutes from './firmwaresRoutes.js';
 import telemetryRoutes from './telemetryRoutes.js';
+import addressesRoutes from './addressesRoutes.js';
 import {
   getCategories,
   createCategory,
@@ -30,6 +31,7 @@ categoryRouter.delete('/:id', deleteCategory);
 
 router.get('/users', getAllUsersDirectory);
 router.use('/customer', customerRoutes);
+router.use('/addresses', addressesRoutes);
 router.use('/auth', authRoutes);
 router.use('/admins', adminRoutes);
 router.use('/admin', adminRoutes);
@@ -47,4 +49,3 @@ router.use('/telemetry', telemetryRoutes);
 router.use('/devices', telemetryRoutes);
 
 export default router;
-

@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { createFirmware, getFirmwares, getLatestFirmware, deleteFirmware } from '../controllers/firmwaresController.js';
+import { createFirmware, getFirmwares, getLatestFirmware, deleteFirmware, syncFirmwaresFromDisk } from '../controllers/firmwaresController.js';
 
 const router = express.Router();
 
@@ -39,6 +39,8 @@ const upload = multer({
 
 router.post('/', upload.single('bin_file'), createFirmware);
 router.get('/latest', getLatestFirmware);
+router.get('/sync', syncFirmwaresFromDisk);
+router.post('/sync', syncFirmwaresFromDisk);
 router.get('/', getFirmwares);
 router.delete('/:id', deleteFirmware);
 

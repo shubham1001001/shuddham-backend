@@ -139,6 +139,22 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // Ensure 'addresses' table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`addresses\` (
+        \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,
+        \`user_id\` VARCHAR(50) NOT NULL,
+        \`title\` VARCHAR(100) NOT NULL DEFAULT 'Home',
+        \`address\` TEXT NOT NULL,
+        \`city\` VARCHAR(100) DEFAULT '',
+        \`pincode\` VARCHAR(20) DEFAULT '',
+        \`is_default\` TINYINT(1) DEFAULT 0,
+        \`created_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_user_id\` (\`user_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // Ensure 'services' table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`services\` (

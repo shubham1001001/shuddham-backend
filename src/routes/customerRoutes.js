@@ -1,5 +1,6 @@
 import express from 'express';
 import { getCustomerBookings } from '../controllers/bookingsController.js';
+import addressesRoutes from './addressesRoutes.js';
 
 const router = express.Router();
 
@@ -9,5 +10,12 @@ const router = express.Router();
  * @access  Private (Bearer token)
  */
 router.get('/bookings', getCustomerBookings);
+
+/**
+ * @route   /api/customer/addresses
+ * @desc    Customer saved addresses CRUD
+ * @access  Private (Bearer token)
+ */
+router.use('/addresses', addressesRoutes);
 
 export default router;
