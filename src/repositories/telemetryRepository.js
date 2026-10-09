@@ -86,6 +86,14 @@ export class TelemetryRepository {
   }
 
   /**
+   * Update online/offline status for a device
+   */
+  static async updateDeviceStatus(devId, status) {
+    const sql = `UPDATE device_latest_telemetry SET status = ?, last_updated = CURRENT_TIMESTAMP WHERE dev_id = ?`;
+    return query(sql, [status, devId]);
+  }
+
+  /**
    * Get all latest devices telemetry states
    */
   static async getAllLatest() {

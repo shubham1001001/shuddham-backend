@@ -17,6 +17,9 @@ export const MQTT_TOPICS = {
 };
 
 export const SUBSCRIBED_TOPICS = [
+  'Shudhham/#',
+  'Shuddham/#',
+  'shuddham/#',
   MQTT_TOPICS.TDS_TELEMETRY,
   MQTT_TOPICS.TDS_TELEMETRY_ALT,
   MQTT_TOPICS.ALL_TDS_DATA_WILDCARD,

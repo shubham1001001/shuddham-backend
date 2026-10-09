@@ -27,12 +27,14 @@ export function initMqtt() {
   // Central message dispatcher / router
   client.on('message', async (topic, payload) => {
     try {
-      // Route TDS telemetry topic (e.g., Shudhham/tds/v1/data, Shuddham/tds/v1/data, Shudhham/+/v1/data)
+      const lowerTopic = topic.toLowerCase();
+      console.log(`[MQTT Router] Received message on topic: [${topic}]`);
       if (
-        topic === MQTT_TOPICS.TDS_TELEMETRY ||
-        topic === MQTT_TOPICS.TDS_TELEMETRY_ALT ||
-        topic.includes('/tds/v1/data') ||
-        topic.endsWith('/v1/data')
+        lowerTopic.includes('tds') ||
+        lowerTopic.includes('telemetry') ||
+        lowerTopic.includes('data') ||
+        lowerTopic.startsWith('shuddham/') ||
+        lowerTopic.startsWith('shudhham/')
       ) {
         await handleTdsTelemetry(topic, payload);
       } else {
