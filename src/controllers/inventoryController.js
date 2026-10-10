@@ -1291,7 +1291,9 @@ export const getCustomerDevices = async (req, res) => {
   try {
     let customerId = (req.query.customerId || req.query.userId || '').toString().trim();
     let phone = (req.query.phone || '').toString().trim();
+    let email = (req.query.email || '').toString().trim().toLowerCase();
 
+    // 1. Extract credentials from Bearer JWT token if present
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
@@ -1305,25 +1307,52 @@ export const getCustomerDevices = async (req, res) => {
           if (!phone && payload.phone) {
             phone = payload.phone;
           }
+          if (!email && (payload.email || payload.userEmail)) {
+            email = (payload.email || payload.userEmail).toString().trim().toLowerCase();
+          }
         } catch (_) {}
       }
     }
 
-    if (customerId && !phone && isMySQLActive()) {
+    // 2. Cross-reference with MySQL users table if customerId is given but phone/email missing
+    if (customerId && (!phone || !email) && isMySQLActive()) {
       try {
-        const uRows = await query('SELECT phone FROM users WHERE id = ? LIMIT 1', [customerId]);
-        if (uRows && uRows.length > 0 && uRows[0].phone) {
-          phone = uRows[0].phone;
+        const uRows = await query('SELECT phone, email FROM users WHERE id = ? LIMIT 1', [customerId]);
+        if (uRows && uRows.length > 0) {
+          if (!phone && uRows[0].phone) phone = uRows[0].phone;
+          if (!email && uRows[0].email) email = uRows[0].email;
+        }
+      } catch (_) {}
+    }
+
+    // 3. Reverse lookup customerId from phone/email if missing
+    if ((phone || email) && !customerId && isMySQLActive()) {
+      try {
+        let uRows = [];
+        if (phone) {
+          const cleanDigits = phone.replace(/\D/g, '').slice(-10);
+          if (cleanDigits.length >= 10) {
+            uRows = await query('SELECT id, phone, email FROM users WHERE phone LIKE ? LIMIT 1', [`%${cleanDigits}`]);
+          }
+        }
+        if ((!uRows || uRows.length === 0) && email) {
+          uRows = await query('SELECT id, phone, email FROM users WHERE LOWER(email) = ? LIMIT 1', [email.toLowerCase()]);
+        }
+        if (uRows && uRows.length > 0) {
+          if (!customerId) customerId = uRows[0].id;
+          if (!phone && uRows[0].phone) phone = uRows[0].phone;
+          if (!email && uRows[0].email) email = uRows[0].email;
         }
       } catch (_) {}
     }
 
     const cleanPhone = normalizePhone(phone);
+    const cleanPhone10 = cleanPhone.replace(/\D/g, '').slice(-10);
 
-    if (!customerId && !cleanPhone) {
+    if (!customerId && cleanPhone10.length < 10 && !email) {
       return res.status(400).json({
         success: false,
-        message: 'Authentication token or customer phone / ID is required to fetch devices.'
+        message: 'Authentication token or customer phone / email / ID is required to fetch assigned devices.'
       });
     }
 
@@ -1342,11 +1371,16 @@ export const getCustomerDevices = async (req, res) => {
     for (const item of items) {
       if (Array.isArray(item.assignments)) {
         for (const a of item.assignments) {
-          const aPhoneClean = normalizePhone(a.customerPhone);
-          const matchPhone = cleanPhone && aPhoneClean && (aPhoneClean === cleanPhone || aPhoneClean.includes(cleanPhone) || cleanPhone.includes(aPhoneClean));
-          const matchId = customerId && a.customerId && String(a.customerId).trim() === String(customerId).trim();
+          // Verify customer matching
+          const aPhoneClean = normalizePhone(a.customerPhone || '');
+          const aPhone10 = aPhoneClean.replace(/\D/g, '').slice(-10);
 
-          if (matchPhone || matchId) {
+          const matchPhone = cleanPhone10.length >= 10 && aPhone10.length >= 10 && (aPhone10 === cleanPhone10);
+          const matchId = customerId && a.customerId && String(a.customerId).trim() === String(customerId).trim();
+          const matchEmail = email && a.customerEmail && a.customerEmail.trim().toLowerCase() === email.trim().toLowerCase();
+
+          // Strictly match devices assigned to THIS specific customer only
+          if (matchPhone || matchId || matchEmail) {
             const serialClean = cleanMac(a.serialNumber);
             const telem = latestTelemetryList.find(t => {
               const tDevClean = cleanMac(t.dev_id);
@@ -1384,6 +1418,9 @@ export const getCustomerDevices = async (req, res) => {
               warrantyUntil: a.warrantyUntil || null,
               warrantyMonths: a.warrantyMonths || 12,
               assignedAdminName: a.adminName || '',
+              customerName: a.customerName || '',
+              customerPhone: a.customerPhone || '',
+              customerEmail: a.customerEmail || '',
               lastSync: telem?.last_updated || telem?.ts || a.installedAt || new Date().toISOString()
             });
           }
