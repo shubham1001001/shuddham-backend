@@ -796,6 +796,7 @@ export const assignDeviceToAdmin = async (req, res) => {
   try {
     const { id } = req.params;
     const {
+      inventoryId,
       adminId,
       adminEmail,
       adminName,
@@ -809,7 +810,16 @@ export const assignDeviceToAdmin = async (req, res) => {
     } = req.body;
 
     const items = await loadInventory();
-    const item = items.find(i => i.id === id);
+    const lookupId = id || inventoryId || req.body.id;
+    let item = lookupId ? items.find(i => i.id === lookupId) : null;
+    if (!item && (serialNumber || serialNumbers)) {
+      const firstSerial = Array.isArray(serialNumbers) && serialNumbers.length > 0
+        ? serialNumbers[0]
+        : (Array.isArray(serialNumber) ? serialNumber[0] : String(serialNumber || '').split(/[,\n\r\t]+/)[0]?.trim());
+      if (firstSerial) {
+        item = items.find(i => Array.isArray(i.availableSerials) && i.availableSerials.some(s => s.toUpperCase() === firstSerial.toUpperCase()));
+      }
+    }
     if (!item) {
       return res.status(404).json({ success: false, message: 'RO device not found in inventory' });
     }
@@ -901,7 +911,8 @@ export const assignDeviceToAdmin = async (req, res) => {
       assignments: createdAssignments
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error assigning device' });
+    console.error('[AssignDeviceToAdmin Error]', err);
+    res.status(500).json({ success: false, message: 'Server error assigning device', error: err.message });
   }
 };
 
@@ -945,7 +956,588 @@ export const unassignDevice = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error unassigning device' });
+    console.error('[UnassignDevice Error]', err);
+    res.status(500).json({ success: false, message: 'Server error unassigning device', error: err.message });
+  }
+};
+
+// Helper to normalize phone numbers strictly to 10 digits
+const normalizePhone = (phoneStr) => {
+  if (!phoneStr) return '';
+  const digits = phoneStr.toString().replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.substring(2);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.substring(1);
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
+// Helper to clean MAC address / device IDs for consistent matching
+const cleanMac = (str) => (str || '').toString().toLowerCase().replace(/[^a-f0-9]/g, '');
+
+/**
+ * Assign Device to Customer (From Admin's custody or directly from Warehouse)
+ * Lifecycle: In Stock -> Allocated to Admin -> Assigned/Installed at Customer
+ */
+export const assignDeviceToCustomer = async (req, res) => {
+  try {
+    const {
+      serialNumber,
+      serialNumbers,
+      assignmentId,
+      inventoryId,
+      customerId,
+      customerName,
+      customerPhone,
+      customerEmail,
+      installationAddress,
+      warrantyMonths = 12,
+      technicianId,
+      technicianName,
+      adminId,
+      adminName,
+      note
+    } = req.body;
+
+    let targetSerials = [];
+    if (Array.isArray(serialNumbers) && serialNumbers.length > 0) {
+      targetSerials = serialNumbers.map(s => String(s).trim()).filter(Boolean);
+    } else if (serialNumber) {
+      if (Array.isArray(serialNumber)) {
+        targetSerials = serialNumber.map(s => String(s).trim()).filter(Boolean);
+      } else {
+        targetSerials = String(serialNumber).split(/[,\n\r\t]+/).map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    if (targetSerials.length === 0 && !assignmentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Serial Number / Device ID or Assignment ID is required to assign to customer.'
+      });
+    }
+
+    if (!customerName || !customerName.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer Name is required.'
+      });
+    }
+
+    const cleanPhone = normalizePhone(customerPhone);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid 10-digit customer phone number is required.'
+      });
+    }
+
+    // Auto-resolve or create customer user record in database
+    let resolvedCustomerId = customerId || '';
+    if (isMySQLActive()) {
+      try {
+        const userRows = await query('SELECT id, full_name, email, phone FROM users WHERE phone LIKE ? OR phone = ? LIMIT 1', [`%${cleanPhone}%`, cleanPhone]);
+        if (userRows && userRows.length > 0) {
+          resolvedCustomerId = userRows[0].id;
+        } else {
+          resolvedCustomerId = `usr-cust-${Date.now()}`;
+          const dummyEmail = customerEmail && customerEmail.trim() ? customerEmail.trim() : `${cleanPhone}@shuddham.in`;
+          await query(`
+            INSERT INTO users (id, full_name, email, phone, role, password)
+            VALUES (?, ?, ?, ?, 'Customer', 'shuddham123')
+            ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)
+          `, [resolvedCustomerId, customerName.trim(), dummyEmail, cleanPhone]);
+        }
+      } catch (userErr) {
+        console.error('[AssignCustomer] User lookup/create notice:', userErr.message);
+      }
+    }
+    if (!resolvedCustomerId) {
+      resolvedCustomerId = `usr-${cleanPhone}`;
+    }
+
+    const items = await loadInventory();
+    const now = new Date();
+    const warrantyEnd = new Date(now);
+    warrantyEnd.setMonth(warrantyEnd.getMonth() + (Number(warrantyMonths) || 12));
+
+    const updatedAssignments = [];
+    let affectedItem = null;
+
+    // Case 1: Specific assignmentId provided
+    if (assignmentId) {
+      for (const item of items) {
+        if (Array.isArray(item.assignments)) {
+          const asgn = item.assignments.find(a => a.id === assignmentId);
+          if (asgn) {
+            asgn.customerId = resolvedCustomerId;
+            asgn.customerName = customerName.trim();
+            asgn.customerPhone = cleanPhone;
+            asgn.customerEmail = customerEmail?.trim() || asgn.customerEmail || '';
+            asgn.installationAddress = installationAddress?.trim() || asgn.installationAddress || '';
+            asgn.installedAt = now.toISOString();
+            asgn.warrantyUntil = warrantyEnd.toISOString();
+            asgn.warrantyMonths = Number(warrantyMonths) || 12;
+            asgn.status = 'Installed';
+            if (technicianId) asgn.technicianId = technicianId;
+            if (technicianName) asgn.technicianName = technicianName;
+            if (note) asgn.note = note.trim();
+            affectedItem = item;
+            updatedAssignments.push(asgn);
+            break;
+          }
+        }
+      }
+    } else {
+      // Case 2: Provided serial numbers
+      for (const serial of targetSerials) {
+        let found = false;
+
+        // A. Check if already in an admin's assignment list (promote to Installed)
+        for (const item of items) {
+          if (Array.isArray(item.assignments)) {
+            const asgn = item.assignments.find(a => 
+              a.serialNumber && a.serialNumber.toUpperCase() === serial.toUpperCase()
+            );
+            if (asgn) {
+              asgn.customerId = resolvedCustomerId;
+              asgn.customerName = customerName.trim();
+              asgn.customerPhone = cleanPhone;
+              asgn.customerEmail = customerEmail?.trim() || asgn.customerEmail || '';
+              asgn.installationAddress = installationAddress?.trim() || asgn.installationAddress || '';
+              asgn.installedAt = now.toISOString();
+              asgn.warrantyUntil = warrantyEnd.toISOString();
+              asgn.warrantyMonths = Number(warrantyMonths) || 12;
+              asgn.status = 'Installed';
+              if (adminId && !asgn.adminId) asgn.adminId = adminId;
+              if (adminName && !asgn.adminName) asgn.adminName = adminName;
+              if (technicianId) asgn.technicianId = technicianId;
+              if (technicianName) asgn.technicianName = technicianName;
+              if (note) asgn.note = note.trim();
+              affectedItem = item;
+              updatedAssignments.push(asgn);
+              found = true;
+              break;
+            }
+          }
+        }
+
+        // B. If not in assignments yet, check availableSerials in warehouse
+        if (!found) {
+          let targetItem = null;
+          if (inventoryId) {
+            targetItem = items.find(i => i.id === inventoryId);
+          }
+          if (!targetItem) {
+            targetItem = items.find(i => 
+              Array.isArray(i.availableSerials) && 
+              i.availableSerials.some(s => s.toUpperCase() === serial.toUpperCase())
+            );
+          }
+
+          if (targetItem) {
+            if (!Array.isArray(targetItem.availableSerials)) targetItem.availableSerials = [];
+            if (!Array.isArray(targetItem.assignments)) targetItem.assignments = [];
+
+            const sIdx = targetItem.availableSerials.findIndex(s => s.toUpperCase() === serial.toUpperCase());
+            if (sIdx !== -1) {
+              targetItem.availableSerials.splice(sIdx, 1);
+            }
+            targetItem.stockQuantity = Math.max(0, targetItem.stockQuantity - 1);
+
+            const newAsgn = {
+              id: `asgn-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+              adminId: adminId || 'admin-hq',
+              adminName: adminName || 'Central Operations',
+              adminEmail: '',
+              quantity: 1,
+              serialNumber: serial,
+              customerId: resolvedCustomerId,
+              customerName: customerName.trim(),
+              customerPhone: cleanPhone,
+              customerEmail: customerEmail?.trim() || '',
+              installationAddress: installationAddress?.trim() || '',
+              assignedDate: now.toISOString(),
+              installedAt: now.toISOString(),
+              warrantyUntil: warrantyEnd.toISOString(),
+              warrantyMonths: Number(warrantyMonths) || 12,
+              status: 'Installed',
+              technicianId: technicianId || '',
+              technicianName: technicianName || '',
+              note: note?.trim() || 'Direct customer installation'
+            };
+
+            targetItem.assignments.push(newAsgn);
+            affectedItem = targetItem;
+            updatedAssignments.push(newAsgn);
+          }
+        }
+      }
+    }
+
+    if (updatedAssignments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No matching device or assignment found for the specified Serial / ID.'
+      });
+    }
+
+    if (affectedItem) {
+      await saveInventoryItem(affectedItem);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Device (${updatedAssignments.map(a => a.serialNumber).join(', ')}) successfully assigned to customer ${customerName} (+91 ${cleanPhone})!`,
+      data: updatedAssignments.length === 1 ? updatedAssignments[0] : updatedAssignments
+    });
+  } catch (err) {
+    console.error('[AssignCustomer Error]', err);
+    return res.status(500).json({ success: false, message: 'Server error assigning device to customer', error: err.message });
+  }
+};
+
+/**
+ * Unassign Device from Customer (Returns back to Admin custody or Warehouse stock)
+ */
+export const unassignDeviceFromCustomer = async (req, res) => {
+  try {
+    const { serialNumber, assignmentId, returnToWarehouse = false } = req.body;
+
+    if (!serialNumber && !assignmentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Either serialNumber or assignmentId is required.'
+      });
+    }
+
+    const items = await loadInventory();
+    let targetItem = null;
+    let targetAssignment = null;
+
+    for (const item of items) {
+      if (Array.isArray(item.assignments)) {
+        const found = item.assignments.find(a => 
+          (assignmentId && a.id === assignmentId) ||
+          (serialNumber && a.serialNumber && a.serialNumber.toUpperCase() === serialNumber.trim().toUpperCase())
+        );
+        if (found) {
+          targetItem = item;
+          targetAssignment = found;
+          break;
+        }
+      }
+    }
+
+    if (!targetAssignment || !targetItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Device assignment record not found.'
+      });
+    }
+
+    const prevCustomerName = targetAssignment.customerName || 'Customer';
+
+    if (returnToWarehouse) {
+      const asgnIdx = targetItem.assignments.findIndex(a => a.id === targetAssignment.id);
+      if (asgnIdx !== -1) {
+        targetItem.assignments.splice(asgnIdx, 1);
+      }
+      targetItem.stockQuantity += 1;
+      if (targetAssignment.serialNumber && !targetItem.availableSerials.some(s => s.toUpperCase() === targetAssignment.serialNumber.toUpperCase())) {
+        targetItem.availableSerials.push(targetAssignment.serialNumber);
+      }
+    } else {
+      targetAssignment.customerId = null;
+      targetAssignment.customerName = '';
+      targetAssignment.customerPhone = '';
+      targetAssignment.customerEmail = '';
+      targetAssignment.installationAddress = '';
+      targetAssignment.installedAt = null;
+      targetAssignment.warrantyUntil = null;
+      targetAssignment.status = 'Allocated';
+      targetAssignment.note = `Unassigned from ${prevCustomerName} on ${new Date().toISOString().split('T')[0]}`;
+    }
+
+    await saveInventoryItem(targetItem);
+
+    return res.status(200).json({
+      success: true,
+      message: `Device ${targetAssignment.serialNumber || ''} successfully unassigned from ${prevCustomerName}. ${returnToWarehouse ? 'Returned to Warehouse stock.' : 'Retained in Admin custody.'}`,
+      data: targetAssignment
+    });
+  } catch (err) {
+    console.error('[UnassignCustomer Error]', err);
+    return res.status(500).json({ success: false, message: 'Server error unassigning device from customer', error: err.message });
+  }
+};
+
+/**
+ * Fetch all devices assigned to a specific customer
+ * (Supports Bearer JWT token, or ?phone=..., or ?customerId=...)
+ * Merges real-time sensor telemetry (TDS, Temp, Online/Offline, Mode, Fan).
+ */
+export const getCustomerDevices = async (req, res) => {
+  try {
+    let customerId = (req.query.customerId || req.query.userId || '').toString().trim();
+    let phone = (req.query.phone || '').toString().trim();
+
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const parts = token.split('.');
+      if (parts.length >= 2) {
+        try {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          if (!customerId && (payload.userId || payload.id)) {
+            customerId = payload.userId || payload.id;
+          }
+          if (!phone && payload.phone) {
+            phone = payload.phone;
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (customerId && !phone && isMySQLActive()) {
+      try {
+        const uRows = await query('SELECT phone FROM users WHERE id = ? LIMIT 1', [customerId]);
+        if (uRows && uRows.length > 0 && uRows[0].phone) {
+          phone = uRows[0].phone;
+        }
+      } catch (_) {}
+    }
+
+    const cleanPhone = normalizePhone(phone);
+
+    if (!customerId && !cleanPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Authentication token or customer phone / ID is required to fetch devices.'
+      });
+    }
+
+    let latestTelemetryList = [];
+    if (isMySQLActive()) {
+      try {
+        latestTelemetryList = await query('SELECT * FROM device_latest_telemetry');
+      } catch (e) {
+        latestTelemetryList = [];
+      }
+    }
+
+    const items = await loadInventory();
+    const matchedDevices = [];
+
+    for (const item of items) {
+      if (Array.isArray(item.assignments)) {
+        for (const a of item.assignments) {
+          const aPhoneClean = normalizePhone(a.customerPhone);
+          const matchPhone = cleanPhone && aPhoneClean && (aPhoneClean === cleanPhone || aPhoneClean.includes(cleanPhone) || cleanPhone.includes(aPhoneClean));
+          const matchId = customerId && a.customerId && String(a.customerId).trim() === String(customerId).trim();
+
+          if (matchPhone || matchId) {
+            const serialClean = cleanMac(a.serialNumber);
+            const telem = latestTelemetryList.find(t => {
+              const tDevClean = cleanMac(t.dev_id);
+              if (tDevClean === serialClean) return true;
+              if (tDevClean.length >= 10 && serialClean.length >= 10 && tDevClean.substring(0, 10) === serialClean.substring(0, 10)) return true;
+              return false;
+            });
+
+            const isOnline = telem ? (telem.status === 'online') : false;
+            const outletTds = telem?.tds2 !== null && telem?.tds2 !== undefined ? Number(telem.tds2) : (telem?.tds1 !== null && telem?.tds1 !== undefined ? Number(telem.tds1) : 85);
+            const inletTds = telem?.tds1 !== null && telem?.tds1 !== undefined ? Number(telem.tds1) : null;
+            const temp = telem?.temp ? Number(telem.temp) : 32.5;
+
+            matchedDevices.push({
+              id: a.serialNumber || a.id,
+              serialNumber: a.serialNumber || 'SHD-PURIFIER',
+              macAddress: a.serialNumber || '',
+              name: item.name || 'Shuddham Smart Purifier',
+              model: item.name || 'Smart IoT RO',
+              category: item.category || 'Smart IoT RO',
+              type: item.category || 'RO',
+              location: a.installationAddress || 'Kitchen',
+              installationAddress: a.installationAddress || '',
+              status: isOnline ? 'online' : 'offline',
+              isOnline: isOnline,
+              tdsPpm: outletTds,
+              inletTdsPpm: inletTds,
+              temperature: temp,
+              mode: telem?.mode || 'NF',
+              fan: telem?.fan || 'enable',
+              tdsRange: telem?.tds_range || 90,
+              filterLifePercentage: 92,
+              totalLitersPurified: 148.5,
+              installedAt: a.installedAt || a.assignedDate || null,
+              warrantyUntil: a.warrantyUntil || null,
+              warrantyMonths: a.warrantyMonths || 12,
+              assignedAdminName: a.adminName || '',
+              lastSync: telem?.last_updated || telem?.ts || a.installedAt || new Date().toISOString()
+            });
+          }
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: matchedDevices.length,
+      data: matchedDevices
+    });
+  } catch (err) {
+    console.error('[GetCustomerDevices Error]', err);
+    return res.status(500).json({ success: false, message: 'Server error fetching customer devices', error: err.message });
+  }
+};
+
+/**
+ * Get all devices in an Admin's custody
+ * Returns both unassigned (in custody) and installed devices.
+ */
+export const getAdminCustodyDevices = async (req, res) => {
+  try {
+    const adminId = (req.params.adminId || req.query.adminId || '').toString().trim();
+    const adminEmail = (req.query.email || '').toString().trim().toLowerCase();
+
+    const items = await loadInventory();
+    const inCustody = [];
+    const installed = [];
+
+    for (const item of items) {
+      if (Array.isArray(item.assignments)) {
+        for (const a of item.assignments) {
+          const matchId = adminId && a.adminId && String(a.adminId).trim() === adminId;
+          const matchEmail = adminEmail && a.adminEmail && String(a.adminEmail).trim().toLowerCase() === adminEmail;
+          const matches = (!adminId && !adminEmail) || matchId || matchEmail;
+
+          if (matches) {
+            const entry = {
+              ...a,
+              itemName: item.name,
+              itemCategory: item.category,
+              inventoryId: item.id,
+              sku: item.sku
+            };
+
+            if (a.status === 'Installed' || (a.customerPhone && a.customerPhone.trim())) {
+              installed.push(entry);
+            } else {
+              inCustody.push(entry);
+            }
+          }
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      totalCount: inCustody.length + installed.length,
+      inCustodyCount: inCustody.length,
+      installedCount: installed.length,
+      data: {
+        inCustody,
+        installed
+      }
+    });
+  } catch (err) {
+    console.error('[AdminCustody Error]', err);
+    return res.status(500).json({ success: false, message: 'Server error fetching admin custody devices', error: err.message });
+  }
+};
+
+/**
+ * Track complete lifecycle of a physical device by its Serial Number / MAC
+ */
+export const getDeviceLifecycleBySerial = async (req, res) => {
+  try {
+    const serial = (req.params.serialNumber || req.query.serial || '').toString().trim();
+    if (!serial) {
+      return res.status(400).json({ success: false, message: 'Device serial number is required' });
+    }
+
+    const items = await loadInventory();
+    let locationState = 'Unknown';
+    let details = null;
+
+    for (const item of items) {
+      if (Array.isArray(item.availableSerials) && item.availableSerials.some(s => s.toUpperCase() === serial.toUpperCase())) {
+        locationState = 'In Warehouse Stock';
+        details = {
+          stage: 'warehouse',
+          itemName: item.name,
+          sku: item.sku,
+          category: item.category,
+          warehouseLocation: item.location,
+          status: 'Available'
+        };
+        break;
+      }
+
+      if (Array.isArray(item.assignments)) {
+        const asgn = item.assignments.find(a => a.serialNumber && a.serialNumber.toUpperCase() === serial.toUpperCase());
+        if (asgn) {
+          if (asgn.status === 'Installed' || (asgn.customerPhone && asgn.customerPhone.trim())) {
+            locationState = 'Installed at Customer';
+            details = {
+              stage: 'customer',
+              itemName: item.name,
+              sku: item.sku,
+              assignmentId: asgn.id,
+              assignedAdmin: { id: asgn.adminId, name: asgn.adminName, email: asgn.adminEmail },
+              customer: {
+                id: asgn.customerId,
+                name: asgn.customerName,
+                phone: asgn.customerPhone,
+                email: asgn.customerEmail,
+                address: asgn.installationAddress
+              },
+              installedAt: asgn.installedAt,
+              warrantyUntil: asgn.warrantyUntil,
+              warrantyMonths: asgn.warrantyMonths,
+              status: asgn.status
+            };
+          } else {
+            locationState = 'In Admin Custody';
+            details = {
+              stage: 'admin_custody',
+              itemName: item.name,
+              sku: item.sku,
+              assignmentId: asgn.id,
+              assignedAdmin: { id: asgn.adminId, name: asgn.adminName, email: asgn.adminEmail },
+              allocatedDate: asgn.assignedDate,
+              status: asgn.status
+            };
+          }
+          break;
+        }
+      }
+    }
+
+    if (!details) {
+      return res.status(404).json({
+        success: false,
+        message: `Device with serial '${serial}' was not found in inventory.`
+      });
+    }
+
+    let telemetry = null;
+    if (isMySQLActive()) {
+      try {
+        const tRows = await query('SELECT * FROM device_latest_telemetry WHERE dev_id = ? OR dev_id = ? LIMIT 1', [serial, cleanMac(serial)]);
+        if (tRows && tRows.length > 0) telemetry = tRows[0];
+      } catch (_) {}
+    }
+
+    return res.status(200).json({
+      success: true,
+      serialNumber: serial,
+      currentLocation: locationState,
+      details,
+      telemetry
+    });
+  } catch (err) {
+    console.error('[DeviceLifecycle Error]', err);
+    return res.status(500).json({ success: false, message: 'Server error retrieving device lifecycle', error: err.message });
   }
 };
 

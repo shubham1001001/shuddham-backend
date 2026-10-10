@@ -10,6 +10,10 @@ import {
   deleteInventoryItem,
   assignDeviceToAdmin,
   unassignDevice,
+  assignDeviceToCustomer,
+  unassignDeviceFromCustomer,
+  getAdminCustodyDevices,
+  getDeviceLifecycleBySerial,
   getCategories,
   createCategory,
   updateCategory,
@@ -26,6 +30,14 @@ router.get('/categories', getCategories);
 router.post('/categories', createCategory);
 router.put('/categories/:id', updateCategory);
 router.delete('/categories/:id', deleteCategory);
+
+// Device Allocation Chain (Admin Custody & Customer Installation)
+router.post('/assign-to-admin', assignDeviceToAdmin);
+router.post('/assign-to-customer', assignDeviceToCustomer);
+router.post('/unassign-customer', unassignDeviceFromCustomer);
+router.get('/admin-custody', getAdminCustodyDevices);
+router.get('/admin-custody/:adminId', getAdminCustodyDevices);
+router.get('/serial/:serialNumber', getDeviceLifecycleBySerial);
 
 // List & Create Items
 router.get('/', getInventory);

@@ -259,6 +259,8 @@ export async function query(sql, params = []) {
   }
   try {
     const [rows] = await pool.query(sql, params);
+    isConnected = true;
+    lastDbError = null;
     return rows;
   } catch (err) {
     if (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ETIMEDOUT') {
@@ -268,6 +270,8 @@ export async function query(sql, params = []) {
       } catch (e) { }
       pool = mysql.createPool(dbConfig);
       const [rows] = await pool.query(sql, params);
+      isConnected = true;
+      lastDbError = null;
       return rows;
     }
     throw err;
@@ -275,7 +279,12 @@ export async function query(sql, params = []) {
 }
 
 export function isMySQLActive() {
-  return isConnected;
+  if (!pool && dbConfig.host && dbConfig.database) {
+    try {
+      pool = mysql.createPool(dbConfig);
+    } catch (_) {}
+  }
+  return Boolean(dbConfig.host && dbConfig.database);
 }
 
 export function getDbStatus() {

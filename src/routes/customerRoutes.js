@@ -1,5 +1,6 @@
 import express from 'express';
 import { getCustomerBookings } from '../controllers/bookingsController.js';
+import { getCustomerDevices } from '../controllers/inventoryController.js';
 import addressesRoutes from './addressesRoutes.js';
 
 const router = express.Router();
@@ -10,6 +11,13 @@ const router = express.Router();
  * @access  Private (Bearer token)
  */
 router.get('/bookings', getCustomerBookings);
+
+/**
+ * @route   GET /api/customer/devices
+ * @desc    Fetch purifiers/devices assigned to this authenticated customer
+ * @access  Private (Bearer token or ?phone=...)
+ */
+router.get('/devices', getCustomerDevices);
 
 /**
  * @route   /api/customer/addresses

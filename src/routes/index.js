@@ -17,7 +17,8 @@ import {
   getCategories,
   createCategory,
   updateCategory,
-  deleteCategory
+  deleteCategory,
+  getCustomerDevices
 } from '../controllers/inventoryController.js';
 import { getAllUsersDirectory } from '../controllers/authController.js';
 
@@ -45,6 +46,7 @@ router.use('/categories', categoryRouter);
 router.use('/support', supportRoutes);
 router.use('/water-reports', waterReportsRoutes);
 router.use('/firmwares', firmwaresRoutes);
+router.get('/devices/my-devices', getCustomerDevices);
 router.use('/telemetry', telemetryRoutes);
 router.use('/devices', telemetryRoutes);
 
