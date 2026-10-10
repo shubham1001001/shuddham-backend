@@ -80,7 +80,7 @@ async function loadInventory() {
           sellingPrice: Number(r.selling_price) || 0,
           location: r.location || 'Warehouse Bay 1',
           supplier: r.supplier || 'Shuddham Manufacturing',
-          lastRestocked: r.last_restocked || new Date().toISOString().split('T')[0],
+          lastRestocked: r.last_restocked ? (r.last_restocked instanceof Date ? r.last_restocked.toISOString().split('T')[0] : String(r.last_restocked).split('T')[0]) : new Date().toISOString().split('T')[0],
           availableSerials: Array.isArray(availableSerials) ? availableSerials : [],
           assignments: Array.isArray(assignments) ? assignments : [],
           createdAt: r.created_at,
