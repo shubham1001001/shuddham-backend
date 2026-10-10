@@ -467,16 +467,22 @@ export const createInventoryItem = async (req, res) => {
     }
 
     const items = await loadInventory();
-    const generatedSku = sku && sku.trim() 
-      ? sku.trim().toUpperCase() 
-      : `SHU-RO-${Date.now().toString().slice(-4)}`;
-
-    const existing = items.find(i => i.sku.toLowerCase() === generatedSku.toLowerCase());
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: `An inventory item with SKU '${generatedSku}' already exists.`
-      });
+    let generatedSku = sku && sku.trim() ? sku.trim().toUpperCase() : null;
+    if (!generatedSku) {
+      let candidate = `SHU-RO-${Date.now()}`;
+      let counter = 1;
+      while (items.some(i => i.sku && i.sku.toLowerCase() === candidate.toLowerCase())) {
+        candidate = `SHU-RO-${Date.now()}-${counter++}`;
+      }
+      generatedSku = candidate;
+    } else {
+      const existing = items.find(i => i.sku && i.sku.toLowerCase() === generatedSku.toLowerCase());
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: `An inventory item with this identifier already exists.`
+        });
+      }
     }
 
     let addedSerials = [];
@@ -614,14 +620,20 @@ export const bulkCreateInventoryItems = async (req, res) => {
         categoryAutoCreated = true;
       }
 
-      const generatedSku = sku && String(sku).trim()
-        ? String(sku).trim().toUpperCase()
-        : `SHU-RO-${Date.now().toString().slice(-6)}-${rowNum}`;
-
-      const skuExists = currentItems.find(i => i.sku.toLowerCase() === generatedSku.toLowerCase());
-      if (skuExists) {
-        results.push({ rowNum, name, success: false, error: `SKU '${generatedSku}' already exists`, categoryAutoCreated });
-        continue;
+      let generatedSku = sku && String(sku).trim() ? String(sku).trim().toUpperCase() : null;
+      if (!generatedSku) {
+        let candidate = `SHU-RO-${Date.now()}-${rowNum}`;
+        let counter = 1;
+        while (currentItems.some(i => i.sku && i.sku.toLowerCase() === candidate.toLowerCase())) {
+          candidate = `SHU-RO-${Date.now()}-${rowNum}-${counter++}`;
+        }
+        generatedSku = candidate;
+      } else {
+        const skuExists = currentItems.find(i => i.sku && i.sku.toLowerCase() === generatedSku.toLowerCase());
+        if (skuExists) {
+          results.push({ rowNum, name, success: false, error: 'Device code already exists', categoryAutoCreated });
+          continue;
+        }
       }
 
       const { addedSerials, skippedSerials } = processDeviceSerials(deviceIds, currentItems);
@@ -721,12 +733,12 @@ export const updateInventoryItem = async (req, res) => {
       supplier
     } = req.body;
 
-    if (sku && sku.trim().toLowerCase() !== current.sku.toLowerCase()) {
-      const duplicate = items.find(i => i.id !== id && i.sku.toLowerCase() === sku.trim().toLowerCase());
+    if (sku && current.sku && sku.trim().toLowerCase() !== current.sku.toLowerCase()) {
+      const duplicate = items.find(i => i.id !== id && i.sku && i.sku.toLowerCase() === sku.trim().toLowerCase());
       if (duplicate) {
         return res.status(400).json({
           success: false,
-          message: `An inventory item with SKU '${sku}' already exists.`
+          message: `An inventory item with this identifier already exists.`
         });
       }
     }
@@ -1658,7 +1670,7 @@ export const deleteInventoryItem = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Inventory item '${removed.name}' (${removed.sku}) removed successfully.`,
+      message: `Inventory item '${removed.name}' removed successfully.`,
       data: removed
     });
   } catch (err) {
