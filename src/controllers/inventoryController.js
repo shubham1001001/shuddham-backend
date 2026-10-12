@@ -1390,30 +1390,30 @@ export const getCustomerDevices = async (req, res) => {
             });
 
             const isOnline = telem ? (telem.status === 'online') : false;
-            const outletTds = telem?.tds2 !== null && telem?.tds2 !== undefined ? Number(telem.tds2) : (telem?.tds1 !== null && telem?.tds1 !== undefined ? Number(telem.tds1) : 85);
+            const outletTds = telem?.tds2 !== null && telem?.tds2 !== undefined ? Number(telem.tds2) : (telem?.tds1 !== null && telem?.tds1 !== undefined ? Number(telem.tds1) : 0);
             const inletTds = telem?.tds1 !== null && telem?.tds1 !== undefined ? Number(telem.tds1) : null;
-            const temp = telem?.temp ? Number(telem.temp) : 32.5;
+            const temp = telem?.temp !== null && telem?.temp !== undefined ? Number(telem.temp) : null;
 
             matchedDevices.push({
               id: a.serialNumber || a.id,
-              serialNumber: a.serialNumber || 'SHD-PURIFIER',
+              serialNumber: a.serialNumber || '',
               macAddress: a.serialNumber || '',
-              name: item.name || 'Shuddham Smart Purifier',
-              model: item.name || 'Smart IoT RO',
+              name: item.name || 'Shuddham Purifier',
+              model: item.name || 'Shuddham Smart RO',
               category: item.category || 'Smart IoT RO',
-              type: item.category || 'RO',
-              location: a.installationAddress || 'Kitchen',
+              type: item.category || 'RO Purifier',
+              location: a.installationAddress || '',
               installationAddress: a.installationAddress || '',
               status: isOnline ? 'online' : 'offline',
               isOnline: isOnline,
               tdsPpm: outletTds,
               inletTdsPpm: inletTds,
               temperature: temp,
-              mode: telem?.mode || 'NF',
-              fan: telem?.fan || 'enable',
-              tdsRange: telem?.tds_range || 90,
-              filterLifePercentage: 92,
-              totalLitersPurified: 148.5,
+              mode: telem?.mode || null,
+              fan: telem?.fan || null,
+              tdsRange: telem?.tds_range !== null && telem?.tds_range !== undefined ? Number(telem.tds_range) : null,
+              filterLifePercentage: telem?.filter_life !== null && telem?.filter_life !== undefined ? Number(telem.filter_life) : (telem ? 95 : 100),
+              totalLitersPurified: telem?.liters !== null && telem?.liters !== undefined ? Number(telem.liters) : (telem?.total_liters !== null && telem?.total_liters !== undefined ? Number(telem.total_liters) : 0.0),
               installedAt: a.installedAt || a.assignedDate || null,
               warrantyUntil: a.warrantyUntil || null,
               warrantyMonths: a.warrantyMonths || 12,
