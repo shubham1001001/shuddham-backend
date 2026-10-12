@@ -46,6 +46,46 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
           return true;
         }
       }
+
+      // Check for raw text commands like T,90 or F,1
+      const rawTrim = rawString.trim();
+      const isCmdTopic = topic.toLowerCase().includes('command') || topic.toLowerCase().includes('cmd');
+      if (isCmdTopic || rawTrim.toUpperCase().startsWith('T,') || rawTrim.toUpperCase().startsWith('F,')) {
+        let devId = '';
+        const parts = topic.split('/');
+        for (const p of parts) {
+          if (p && p.length >= 6 && !['shuddham', 'shudhham', 'devices', 'status', 'telemetry', 'data', 'v1', 'tds', 'command', 'cmd'].includes(p.toLowerCase())) {
+            devId = p;
+            break;
+          }
+        }
+        if (devId) {
+          const tMatch = rawTrim.match(/^T\s*,\s*(\d+)/i);
+          if (tMatch) {
+            const tdsVal = parseInt(tMatch[1], 10);
+            console.log(`[MQTT Handler] Processed raw TDS command: ${rawTrim} (tds_range: ${tdsVal}) for ${devId}`);
+            const existing = await TelemetryRepository.getLatestByDeviceId(devId);
+            const updated = {
+              devId,
+              ts: new Date().toISOString(),
+              status: 'online',
+              temp: existing?.temp ? Number(existing.temp) : 25.0,
+              tds1: existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : tdsVal,
+              tds2: existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160,
+              mode: existing?.mode || 'RO',
+              tdsRange: tdsVal,
+              fan: existing?.fan || 'enable',
+              topic: 'Shudhham/tds/v1/data',
+              rawPayload: JSON.stringify({ dev_Id: devId, command: rawTrim, tds_range: tdsVal })
+            };
+            await TelemetryRepository.upsertLatestDeviceState(updated);
+            return true;
+          }
+        }
+        console.log(`[MQTT Handler] Received command on [${topic}]: ${rawTrim}`);
+        return true;
+      }
+
       console.warn(`[MQTT Handler] Invalid JSON on topic ${topic}:`, rawString);
       return false;
     }

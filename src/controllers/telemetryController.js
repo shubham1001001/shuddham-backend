@@ -241,6 +241,74 @@ export async function publishMqttCommand(req, res) {
       await TelemetryRepository.insertHistoricalLog(updatedRecord);
     }
 
+    // If this was a TDS target command (e.g. T,90 or T,1000)
+    const tMatch = msgStr.match(/T\s*,\s*(\d+)/i);
+    if (tMatch) {
+      const targetTds = parseInt(tMatch[1], 10);
+      let devId = 'unknown';
+      if (typeof message === 'object' && (message.dev_Id || message.dev_id || message.devId)) {
+        devId = (message.dev_Id || message.dev_id || message.devId).toString().trim();
+      } else if (topic) {
+        const parts = topic.split('/');
+        for (const p of parts) {
+          if (p && p.length >= 6 && !['shuddham', 'shudhham', 'devices', 'telemetry', 'data', 'v1', 'tds', 'cmd', 'command'].includes(p.toLowerCase())) {
+            devId = p;
+            break;
+          }
+        }
+      }
+
+      console.log(`[Telemetry API] Received TDS command "${msgStr}" (target: ${targetTds} PPM) for device ${devId}`);
+      const existing = await TelemetryRepository.getLatestByDeviceId(devId);
+      const temp = existing?.temp ? Number(existing.temp) : 25.0;
+      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : targetTds;
+      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
+      const mode = existing?.mode || 'RO';
+      const fanState = existing?.fan || 'enable';
+
+      const d = new Date();
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(d);
+      const getP = (type) => parts.find(p => p.type === type)?.value;
+      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
+
+      const updatedRecord = {
+        devId,
+        ts,
+        status: 'online',
+        temp,
+        tds1,
+        tds2,
+        mode,
+        tdsRange: targetTds,
+        fan: fanState,
+        topic: 'Shudhham/tds/v1/data',
+        rawPayload: JSON.stringify({
+          dev_Id: devId,
+          ts: new Date().toISOString(),
+          status: 'online',
+          temp,
+          tds1,
+          tds2,
+          mode,
+          tds_range: targetTds,
+          fan: fanState,
+          command: msgStr
+        })
+      };
+
+      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
+      await TelemetryRepository.insertHistoricalLog(updatedRecord);
+    }
+
     res.json({
       success: true,
       message: `Message published to topic: ${topic}`
@@ -249,6 +317,92 @@ export async function publishMqttCommand(req, res) {
     res.status(500).json({
       success: false,
       message: 'Failed to publish MQTT message',
+      error: err.message
+    });
+  }
+}
+
+/**
+ * POST /api/telemetry/command
+ * Dedicated API to publish commands like T,90 or T,1000 or F,1 to device
+ */
+export async function sendDeviceCommand(req, res) {
+  try {
+    const { deviceId, command } = req.body;
+    if (!deviceId || !command) {
+      return res.status(400).json({
+        success: false,
+        message: 'deviceId and command are required'
+      });
+    }
+
+    const topic = `Shudhham/${deviceId}/v1/command`;
+    await publish(topic, command);
+
+    const cmdStr = String(command).trim();
+    const tMatch = cmdStr.match(/^T\s*,\s*(\d+)/i);
+    if (tMatch) {
+      const targetTds = parseInt(tMatch[1], 10);
+      const existing = await TelemetryRepository.getLatestByDeviceId(deviceId);
+      const temp = existing?.temp ? Number(existing.temp) : 25.0;
+      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : targetTds;
+      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
+      const mode = existing?.mode || 'RO';
+      const fanState = existing?.fan || 'enable';
+
+      const d = new Date();
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(d);
+      const getP = (type) => parts.find(p => p.type === type)?.value;
+      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
+
+      const updatedRecord = {
+        devId: deviceId,
+        ts,
+        status: 'online',
+        temp,
+        tds1,
+        tds2,
+        mode,
+        tdsRange: targetTds,
+        fan: fanState,
+        topic: 'Shudhham/tds/v1/data',
+        rawPayload: JSON.stringify({
+          dev_Id: deviceId,
+          ts: new Date().toISOString(),
+          status: 'online',
+          temp,
+          tds1,
+          tds2,
+          mode,
+          tds_range: targetTds,
+          fan: fanState,
+          command: cmdStr
+        })
+      };
+
+      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
+      await TelemetryRepository.insertHistoricalLog(updatedRecord);
+    }
+
+    res.json({
+      success: true,
+      message: `Command "${command}" published to ${topic}`,
+      topic,
+      command
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send device command',
       error: err.message
     });
   }

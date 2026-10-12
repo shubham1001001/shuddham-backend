@@ -5,6 +5,7 @@ import {
   getDeviceTelemetryHistory,
   ingestTelemetryHttp,
   publishMqttCommand,
+  sendDeviceCommand,
   getMqttServiceStatus
 } from '../controllers/telemetryController.js';
 
@@ -21,6 +22,9 @@ router.post('/ingest', ingestTelemetryHttp);
 
 // POST /api/telemetry/publish - Publish message to MQTT topic
 router.post('/publish', publishMqttCommand);
+
+// POST /api/telemetry/command - Publish command (T,90, F,1) directly with deviceId
+router.post('/command', sendDeviceCommand);
 
 // GET /api/telemetry/:devId/latest - Get latest telemetry for a device
 router.get('/:devId/latest', getDeviceLatestTelemetry);
