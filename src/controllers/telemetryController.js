@@ -36,6 +36,44 @@ function formatToDayMonthYear(raw) {
 }
 
 /**
+ * Normalizes device MAC address:
+ * - Strips colons, spaces, dashes
+ * - Lowercases
+ * - Maps ESP32 BLE SoftAP MAC ending in '02' to STA Wi-Fi MAC ending in '00'
+ */
+export function normalizeHardwareDevId(rawId) {
+  if (!rawId) return '2805a520c400';
+  let clean = String(rawId).replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+  if (clean.length === 12 && clean.endsWith('02')) {
+    clean = clean.substring(0, 10) + '00';
+  }
+  return clean || '2805a520c400';
+}
+
+/**
+ * Normalizes fan state strictly to 'enable' or 'disable'
+ */
+export function normalizeFanState(raw) {
+  if (raw === undefined || raw === null) return 'enable';
+  const str = String(raw).trim().toLowerCase();
+  if (str === 'disable' || str === 'disabled' || str === '0' || str === 'off' || str === 'false') {
+    return 'disable';
+  }
+  return 'enable';
+}
+
+/**
+ * Normalizes TDS range strictly to an integer between 50 and 1000
+ * Clamps > 990 to 1000
+ */
+export function normalizeTdsRange(raw) {
+  let val = parseInt(raw, 10);
+  if (isNaN(val) || val < 50) val = 90;
+  if (val > 990) val = 1000;
+  return val;
+}
+
+/**
  * GET /api/telemetry/latest
  * Get all latest device telemetry states
  */
@@ -46,6 +84,17 @@ export async function getLatestDevicesTelemetry(req, res) {
       ...r,
       ts: formatToDayMonthYear(r.ts)
     }));
+
+    const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const formattedDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    console.log(`
+╔══════════════════════════════════════════════════════════════════
+║ 📱 [MOBILE TELEMETRY POLL] • ${nowKolkata} (${formattedDate})
+║ 🌐 Client IP       : ${clientIp}
+${formatted.map(f => `║ 🆔 Dev ${f.dev_id} | ☁️ Backend Hardware Ts: ${f.ts} | TDS: ${f.tds1 || '--'}/${f.tds2 || '--'} | Fan: ${f.fan || '--'}`).join('\n')}
+╚══════════════════════════════════════════════════════════════════`);
 
     res.json({
       success: true,
@@ -168,36 +217,56 @@ export async function publishMqttCommand(req, res) {
       });
     }
 
-    await publish(topic, message);
-
-    // If this was a fan enable command or payload, update database and broadcast full telemetry to AWS IoT
+    let finalMessage = message;
     const msgStr = typeof message === 'object' ? JSON.stringify(message) : String(message);
-    const isFanEnable = msgStr.includes('F,1') || msgStr.toLowerCase().includes('"fan":"enable"') || msgStr.toLowerCase().includes('"fan": "enable"');
-    const isFanDisable = msgStr.includes('F,0') || msgStr.toLowerCase().includes('"fan":"disable"') || msgStr.toLowerCase().includes('"fan": "disable"');
+    const preTMatch = msgStr.match(/T\s*,\s*(\d+)/i);
+    if (preTMatch) {
+      let tVal = parseInt(preTMatch[1], 10);
+      if (tVal > 990) {
+        tVal = 1000;
+        finalMessage = typeof message === 'object'
+          ? { ...message, command: `T,${tVal}`, tds: tVal, tds_range: tVal }
+          : `T,${tVal}`;
+      }
+    }
 
-    if (isFanEnable || isFanDisable) {
-      const fanState = isFanEnable ? 'enable' : 'disable';
-      let devId = 'unknown';
-      if (typeof message === 'object' && (message.dev_Id || message.dev_id || message.devId)) {
-        devId = (message.dev_Id || message.dev_id || message.devId).toString().trim();
-      } else if (topic) {
-        const parts = topic.split('/');
-        for (const p of parts) {
-          if (p && p.length >= 6 && !['shuddham', 'shudhham', 'devices', 'telemetry', 'data', 'v1', 'tds', 'cmd', 'command'].includes(p.toLowerCase())) {
-            devId = p;
-            break;
-          }
+    await publish(topic, finalMessage);
+
+    // If this is a SubConfig payload or fan command, update database and broadcast full telemetry to AWS IoT
+    const isSubConfig = topic.toLowerCase().includes('subconfig');
+    let subDevId = 'unknown';
+    if (typeof message === 'object' && (message.dev_Id || message.dev_id || message.devId || message.deviceId)) {
+      subDevId = (message.dev_Id || message.dev_id || message.devId || message.deviceId).toString().trim();
+    } else if (topic) {
+      const parts = topic.split('/');
+      for (const p of parts) {
+        if (p && p.length >= 6 && !['shuddham', 'shudhham', 'devices', 'telemetry', 'data', 'v1', 'tds', 'cmd', 'command', 'subconfig'].includes(p.toLowerCase())) {
+          subDevId = p;
+          break;
         }
       }
+    }
 
-      deviceStateService.setFanState(devId, fanState);
+    const rawTdsFromMsg = typeof message === 'object' ? (message.tds_range ?? message.tdsRange ?? message.tds) : null;
+    let dynamicTdsRange = rawTdsFromMsg !== null && rawTdsFromMsg !== undefined ? Number(rawTdsFromMsg) : null;
+    if (dynamicTdsRange !== null && dynamicTdsRange > 990) {
+      dynamicTdsRange = 1000;
+    }
 
-      const existing = await TelemetryRepository.getLatestByDeviceId(devId);
-      const temp = existing?.temp ? Number(existing.temp) : 31.2;
+    const isFanEnable = msgStr.includes('F,1') || msgStr.toLowerCase().includes('"fan":"enable"') || msgStr.toLowerCase().includes('"fan": "enable"') || (typeof message === 'object' && message.fan === 'enable');
+    const isFanDisable = msgStr.includes('F,0') || msgStr.toLowerCase().includes('"fan":"disable"') || msgStr.toLowerCase().includes('"fan": "disable"') || (typeof message === 'object' && message.fan === 'disable');
+
+    if (isSubConfig || dynamicTdsRange !== null || isFanEnable || isFanDisable) {
+      const existing = await TelemetryRepository.getLatestByDeviceId(subDevId);
+      const fanState = isFanDisable ? 'disable' : (isFanEnable ? 'enable' : (existing?.fan || 'enable'));
+      const finalTdsRange = dynamicTdsRange !== null ? dynamicTdsRange : (existing?.tds_range || 90);
+
+      deviceStateService.setFanState(subDevId, fanState);
+
+      const temp = existing?.temp ? Number(existing.temp) : 25.0;
       const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : 58;
       const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 52;
       const mode = existing?.mode || 'NF';
-      const tdsRange = existing?.tds_range || 90;
 
       const d = new Date();
       const parts = new Intl.DateTimeFormat('en-CA', {
@@ -214,37 +283,42 @@ export async function publishMqttCommand(req, res) {
       const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
 
       const updatedRecord = {
-        devId,
+        devId: subDevId,
         ts,
         status: 'online',
         temp,
         tds1,
         tds2,
         mode,
-        tdsRange,
+        tdsRange: finalTdsRange,
         fan: fanState,
-        topic: 'Shudhham/tds/v1/data',
-        rawPayload: JSON.stringify({
-          dev_Id: devId,
-          ts: new Date().toISOString(),
-          status: 'online',
-          temp,
-          tds1,
-          tds2,
-          mode,
-          tds_range: tdsRange,
-          fan: fanState
-        })
+        topic,
+        rawPayload: JSON.stringify(typeof message === 'object' ? message : { dev_Id: subDevId, message })
       };
 
       await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
       await TelemetryRepository.insertHistoricalLog(updatedRecord);
+
+      const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+      console.log(`
+╔══════════════════════════════════════════════════════════════════
+║ 📤 [DYNAMIC API MQTT DISPATCH] • ${nowKolkata}
+║ 🎯 Target Dev   : ${subDevId} (Dynamic from Mobile)
+║ 💧 TDS Range    : ${finalTdsRange} PPM ${finalTdsRange === 1000 ? '(Rule applied: > 990 -> 1000)' : ''}
+║ 🌀 Fan State    : ${fanState}
+║ 📮 Target Topic : ${topic}
+║ 📦 JSON Payload : ${JSON.stringify(message)}
+║ 💾 DB Snapshot  : Updated
+╚══════════════════════════════════════════════════════════════════`);
     }
 
     // If this was a TDS target command (e.g. T,90 or T,1000)
     const tMatch = msgStr.match(/T\s*,\s*(\d+)/i);
     if (tMatch) {
-      const targetTds = parseInt(tMatch[1], 10);
+      let targetTds = parseInt(tMatch[1], 10);
+      if (targetTds > 990) {
+        targetTds = 1000;
+      }
       let devId = 'unknown';
       if (typeof message === 'object' && (message.dev_Id || message.dev_id || message.devId)) {
         devId = (message.dev_Id || message.dev_id || message.devId).toString().trim();
@@ -301,7 +375,7 @@ export async function publishMqttCommand(req, res) {
           mode,
           tds_range: targetTds,
           fan: fanState,
-          command: msgStr
+          command: `T,${targetTds}`
         })
       };
 
@@ -328,7 +402,7 @@ export async function publishMqttCommand(req, res) {
  */
 export async function sendDeviceCommand(req, res) {
   try {
-    const { deviceId, command } = req.body;
+    let { deviceId, command } = req.body;
     if (!deviceId || !command) {
       return res.status(400).json({
         success: false,
@@ -336,16 +410,39 @@ export async function sendDeviceCommand(req, res) {
       });
     }
 
-    const topic = `Shudhham/${deviceId}/v1/command`;
+    const cleanDevId = normalizeHardwareDevId(deviceId);
+    let cmdStr = String(command).trim();
+    const tMatch = cmdStr.match(/^T\s*,\s*(\d+)/i);
+    let targetTds = null;
+    if (tMatch) {
+      targetTds = normalizeTdsRange(tMatch[1]);
+      cmdStr = `T,${targetTds}`;
+      command = cmdStr;
+    }
+
+    const existing = await TelemetryRepository.getLatestByDeviceId(cleanDevId);
+    let fanState = existing?.fan || 'enable';
+    if (cmdStr.includes('F,1')) fanState = 'enable';
+    if (cmdStr.includes('F,0')) fanState = 'disable';
+    deviceStateService.setFanState(cleanDevId, fanState);
+
+    const topic = `Shudhham/${cleanDevId}/v1/command`;
     await publish(topic, command);
 
-    const cmdStr = String(command).trim();
-    const tMatch = cmdStr.match(/^T\s*,\s*(\d+)/i);
-    if (tMatch) {
-      const targetTds = parseInt(tMatch[1], 10);
-      const existing = await TelemetryRepository.getLatestByDeviceId(deviceId);
+    // Also dispatch SubConfig to Shudhham/tds/v1/SubConfig
+    const effectiveTds = targetTds !== null ? targetTds : (existing?.tds_range || 200);
+    const subConfigPayload = {
+      dev_Id: cleanDevId,
+      tds_range: effectiveTds,
+      fan: fanState
+    };
+    try {
+      await publish('Shudhham/tds/v1/SubConfig', subConfigPayload);
+    } catch (_) {}
+
+    if (targetTds !== null || cmdStr.includes('F,')) {
       const temp = existing?.temp ? Number(existing.temp) : 25.0;
-      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : targetTds;
+      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : effectiveTds;
       const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
       const mode = existing?.mode || 'RO';
       const fanState = existing?.fan || 'enable';
@@ -393,6 +490,14 @@ export async function sendDeviceCommand(req, res) {
       await TelemetryRepository.insertHistoricalLog(updatedRecord);
     }
 
+    console.log(`
+╔══════════════════════════════════════════════════════════════════
+║ 🚀 [DEVICE COMMAND DISPATCH] • ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
+║ 🎯 Device ID    : ${deviceId}
+║ 💬 Command      : "${command}" ${targetTds !== null ? `(Target TDS: ${targetTds} PPM${targetTds === 1000 ? ' - Snapped because > 990' : ''})` : ''}
+║ 📮 Target Topic : ${topic}
+╚══════════════════════════════════════════════════════════════════`);
+
     res.json({
       success: true,
       message: `Command "${command}" published to ${topic}`,
@@ -409,6 +514,173 @@ export async function sendDeviceCommand(req, res) {
 }
 
 /**
+ * POST /api/telemetry/tds
+ * POST /api/telemetry/set-tds
+ * POST /api/telemetry/:devId/tds
+ * Dedicated API to send TDS value command (e.g. T,90) to purifier device via MQTT and update database
+ */
+export async function sendTdsCommand(req, res) {
+  try {
+    let devId = req.params?.devId || req.body?.deviceId || req.body?.devId || req.body?.dev_id || req.query?.deviceId || req.query?.devId;
+    
+    // Extract TDS value from different common payload formats
+    let rawTds = req.body?.tds !== undefined 
+      ? req.body.tds 
+      : (req.query?.tds !== undefined 
+          ? req.query.tds 
+          : (req.body?.value !== undefined 
+              ? req.body.value 
+              : (req.query?.value !== undefined 
+                  ? req.query.value 
+                  : (req.body?.tdsValue !== undefined 
+                      ? req.body.tdsValue 
+                      : req.body?.tds_range))));
+
+    // Also parse if direct command string like "T,90" was passed
+    const cmdStr = req.body?.command || req.query?.command;
+    if (cmdStr) {
+      const match = String(cmdStr).match(/T\s*,\s*(\d+)/i);
+      if (match) {
+        rawTds = match[1];
+      }
+    }
+
+    // Default to 90 if not provided or empty
+    let tdsValue = 90;
+    if (rawTds !== undefined && rawTds !== null && rawTds !== '' && !isNaN(Number(rawTds))) {
+      tdsValue = parseInt(rawTds, 10);
+    }
+
+    // TDS Rule: 990 ke above jane par value automatically 1000 ho jayegi MQTT server ke liye
+    if (tdsValue > 990) {
+      tdsValue = 1000;
+    }
+
+    // Auto-detect deviceId from DB if omitted
+    if (!devId) {
+      try {
+        const latest = await TelemetryRepository.getAllLatest();
+        if (latest && latest.length > 0 && latest[0].dev_id) {
+          devId = latest[0].dev_id;
+        }
+      } catch (err) {
+        console.warn('[Telemetry API] Could not auto-detect latest device:', err.message);
+      }
+    }
+
+    devId = normalizeHardwareDevId(devId);
+    tdsValue = normalizeTdsRange(rawTds);
+    const command = `T,${tdsValue}`;
+
+    // Get current fan state or use requested fan state
+    const existing = await TelemetryRepository.getLatestByDeviceId(devId);
+    const fanState = normalizeFanState(req.body?.fan ?? req.query?.fan ?? existing?.fan);
+    deviceStateService.setFanState(devId, fanState);
+
+    // Construct SubConfig JSON payload: {"dev_Id":"2805a520c400","tds_range":200,"fan":"disable"}
+    const subConfigPayload = {
+      dev_Id: devId,
+      tds_range: tdsValue,
+      fan: fanState
+    };
+
+    const subConfigTopic = 'Shudhham/tds/v1/SubConfig';
+    const subConfigTopicAlt = 'Shuddham/tds/v1/SubConfig';
+    const primaryTopic = `Shudhham/${devId}/v1/command`;
+    const altTopic = `Shuddham/${devId}/v1/command`;
+
+    let mqttPublished = false;
+    let mqttError = null;
+
+    // Publish to AWS IoT MQTT broker:
+    // Only single command: Shudhham/tds/v1/SubConfig (JSON payload)
+    try {
+      await publish(subConfigTopic, subConfigPayload);
+      mqttPublished = true;
+      try { await publish(subConfigTopicAlt, subConfigPayload); } catch (_) {}
+    } catch (pubErr) {
+      console.warn(`[Telemetry API] MQTT publish error for topic ${subConfigTopic}:`, pubErr.message);
+      mqttError = pubErr.message;
+    }
+
+    // Update real-time state and historical telemetry in database
+    let dbUpdated = false;
+    try {
+      const temp = existing?.temp ? Number(existing.temp) : 25.0;
+      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : tdsValue;
+      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
+      const mode = existing?.mode || 'RO';
+
+      const d = new Date();
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(d);
+      const getP = (type) => parts.find(p => p.type === type)?.value;
+      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
+
+      const updatedRecord = {
+        devId,
+        ts,
+        status: 'online',
+        temp,
+        tds1,
+        tds2,
+        mode,
+        tdsRange: tdsValue,
+        fan: fanState,
+        topic: subConfigTopic,
+        rawPayload: JSON.stringify(subConfigPayload)
+      };
+
+      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
+      await TelemetryRepository.insertHistoricalLog(updatedRecord);
+      dbUpdated = true;
+    } catch (dbErr) {
+      console.error('[Telemetry API] Database update error for SubConfig command:', dbErr.message);
+    }
+
+    console.log(`
+╔══════════════════════════════════════════════════════════════════
+║ 💧 [MQTT SUBCONFIG PUBLISHED] • ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
+║ 📮 Topic       : ${subConfigTopic}
+║ 📦 JSON Payload: ${JSON.stringify(subConfigPayload)}
+║ 🎯 Device ID   : ${devId}
+║ 🎚️ TDS Range   : ${tdsValue} PPM ${Number(rawTds) > 990 ? '(Snapped to 1000 PPM because > 990)' : ''}
+║ 🌀 Fan State   : ${fanState}
+║ 💬 Command     : "${command}"
+║ 📡 MQTT Status : ${mqttPublished ? '✅ Published to AWS IoT Broker' : '⚠️ Offline/Error: ' + mqttError}
+║ 💾 DB Snapshot : ${dbUpdated ? '✅ Saved in database' : '⚠️ Not updated'}
+╚══════════════════════════════════════════════════════════════════`);
+
+    return res.json({
+      success: true,
+      message: `SubConfig published successfully to ${subConfigTopic}`,
+      data: {
+        topic: subConfigTopic,
+        payload: subConfigPayload,
+        command,
+        mqttPublished,
+        mqttError: mqttPublished ? null : mqttError,
+        dbUpdated
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send TDS command',
+      error: err.message
+    });
+  }
+}
+
+/**
  * GET /api/telemetry/status
  * Get MQTT connection status and topic info
  */
@@ -418,3 +690,4 @@ export async function getMqttServiceStatus(req, res) {
     data: getMqttStatus()
   });
 }
+

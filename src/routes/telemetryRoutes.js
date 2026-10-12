@@ -6,6 +6,7 @@ import {
   ingestTelemetryHttp,
   publishMqttCommand,
   sendDeviceCommand,
+  sendTdsCommand,
   getMqttServiceStatus
 } from '../controllers/telemetryController.js';
 
@@ -25,6 +26,20 @@ router.post('/publish', publishMqttCommand);
 
 // POST /api/telemetry/command - Publish command (T,90, F,1) directly with deviceId
 router.post('/command', sendDeviceCommand);
+
+// POST /api/telemetry/tds - Dedicated API to send TDS value (e.g. T,90)
+router.post('/tds', sendTdsCommand);
+router.get('/tds', sendTdsCommand);
+router.post('/set-tds', sendTdsCommand);
+
+// POST /api/telemetry/subconfig - Dedicated SubConfig API
+router.post('/subconfig', sendTdsCommand);
+router.post('/SubConfig', sendTdsCommand);
+router.post('/config', sendTdsCommand);
+
+// POST /api/telemetry/:devId/tds - Dedicated API to send TDS value with deviceId param
+router.post('/:devId/tds', sendTdsCommand);
+router.post('/:devId/subconfig', sendTdsCommand);
 
 // GET /api/telemetry/:devId/latest - Get latest telemetry for a device
 router.get('/:devId/latest', getDeviceLatestTelemetry);

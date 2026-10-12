@@ -62,7 +62,10 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
         if (devId) {
           const tMatch = rawTrim.match(/^T\s*,\s*(\d+)/i);
           if (tMatch) {
-            const tdsVal = parseInt(tMatch[1], 10);
+            let tdsVal = parseInt(tMatch[1], 10);
+            if (tdsVal > 990) {
+              tdsVal = 1000;
+            }
             console.log(`[MQTT Handler] Processed raw TDS command: ${rawTrim} (tds_range: ${tdsVal}) for ${devId}`);
             const existing = await TelemetryRepository.getLatestByDeviceId(devId);
             const updated = {
@@ -140,14 +143,26 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
     }
 
     const mode = data.mode ? data.mode.toString() : 'NF';
-    const tdsRange = (data.tds_range !== undefined && data.tds_range !== null) 
+    let tdsRange = (data.tds_range !== undefined && data.tds_range !== null) 
       ? parseInt(data.tds_range, 10) 
       : (data.tdsRange !== undefined && data.tdsRange !== null ? parseInt(data.tdsRange, 10) : 90);
     
-    // Check if this message is an explicit fan command
-    const isCommandTopic = topic.toLowerCase().includes('cmd') || topic.toLowerCase().includes('command');
+    // TDS Rule: 990 ke above jane par 1000 treat kiya jayega
+    if (tdsRange > 990) {
+      tdsRange = 1000;
+    }
+    
+    // Fetch existing device state so partial config payloads (like SubConfig) don't overwrite sensor telemetry with null
+    const existing = await TelemetryRepository.getLatestByDeviceId(devId);
+    const finalTemp = temp !== null ? temp : (existing?.temp ? Number(existing.temp) : 25.0);
+    const finalTds1 = tds1 !== null ? tds1 : (existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : 58);
+    const finalTds2 = tds2 !== null ? tds2 : (existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 52);
+    const finalMode = data.mode ? data.mode.toString() : (existing?.mode || 'RO');
+
+    // Check if this message is a SubConfig or explicit fan command
+    const isCommandTopic = topic.toLowerCase().includes('cmd') || topic.toLowerCase().includes('command') || topic.toLowerCase().includes('subconfig');
     const cmdVal = (data.command || data.cmd || '').toString();
-    if (isCommandTopic || cmdVal) {
+    if (isCommandTopic || cmdVal || data.fan) {
       if (cmdVal.includes('F,1') || data.fan === 'enable') {
         deviceStateService.setFanState(devId, 'enable');
       } else if (cmdVal.includes('F,0') || data.fan === 'disable') {
@@ -166,10 +181,10 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
       devId,
       ts,
       status,
-      temp,
-      tds1,
-      tds2,
-      mode,
+      temp: finalTemp,
+      tds1: finalTds1,
+      tds2: finalTds2,
+      mode: finalMode,
       tdsRange,
       fan,
       topic,
@@ -182,37 +197,23 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
     // 2. Update the real-time latest device snapshot
     await TelemetryRepository.upsertLatestDeviceState(payloadRecord);
 
-    console.log(`[MQTT Handler] Saved device ${devId} telemetry | TDS1: ${tds1}, TDS2: ${tds2}, Temp: ${temp}°C, Fan: ${fan}, Mode: ${mode}`);
+    const isSubConfig = topic.toLowerCase().includes('subconfig');
+    const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+    console.log(`
+╔══════════════════════════════════════════════════════════════════
+║ 📥 [${isSubConfig ? 'MQTT SUBCONFIG INGESTED' : 'MQTT TELEMETRY RECEIVED'}] • ${nowKolkata}
+║ 🎯 Device ID       : ${devId}
+║ 📱 Received At     : ${nowKolkata} (Mobile/IoT Event)
+║ ☁️ Backend Prev Ts : ${existing?.ts || 'No prior snapshot'}
+║ ⏱️ Fresh Saved Ts  : ${ts}
+║ 💧 TDS Range       : ${tdsRange} PPM ${tdsRange === 1000 ? '(Rule applied: > 990 -> 1000)' : ''}
+║ 🌀 Fan State       : ${fan}
+║ 💧 TDS1 / TDS2     : ${finalTds1} PPM / ${finalTds2} PPM
+║ 🌡️ Temp            : ${finalTemp}°C | Mode: ${finalMode}
+║ 📮 Topic           : ${topic}
+╚══════════════════════════════════════════════════════════════════`);
 
-    // 3. If incoming hardware reported 'disable', immediately publish corrected packet with 'enable'
-    // back to AWS IoT Core broker so AWS Console subscribers immediately see 'fan': 'enable'!
-    if (shouldRepublishEnableToAws) {
-      try {
-        const client = getMqttClient();
-        if (client && isClientConnected()) {
-          const awsPayload = JSON.stringify({
-            dev_Id: devId,
-            ts: new Date().toISOString(),
-            status: status || 'online',
-            temp: temp,
-            tds1: tds1,
-            tds2: tds2,
-            mode: mode,
-            tds_range: tdsRange,
-            fan: 'enable'
-          });
-          client.publish('Shudhham/tds/v1/data', awsPayload, { qos: 1 }, (pubErr) => {
-            if (pubErr) {
-              console.error('[MQTT Handler] AWS IoT republish error:', pubErr.message);
-            } else {
-              console.log(`[MQTT Handler] Auto-broadcasted fan:enable to AWS IoT Core topic [Shudhham/tds/v1/data]`);
-            }
-          });
-        }
-      } catch (err) {
-        console.warn('[MQTT Handler] Failed to broadcast fan enable to AWS IoT:', err.message);
-      }
-    }
+
 
     return true;
   } catch (err) {

@@ -8,6 +8,10 @@ export const MQTT_TOPICS = {
   // Standardized casing fallback
   TDS_TELEMETRY_ALT: 'Shuddham/tds/v1/data',
 
+  // Device configuration topic (SubConfig)
+  SUB_CONFIG: 'Shudhham/tds/v1/SubConfig',
+  SUB_CONFIG_ALT: 'Shuddham/tds/v1/SubConfig',
+
   // Wildcards for multi-device scalability
   ALL_TDS_DATA_WILDCARD: 'Shudhham/+/v1/data',
   ALL_TDS_DATA_WILDCARD_ALT: 'Shuddham/+/v1/data',
@@ -22,6 +26,8 @@ export const SUBSCRIBED_TOPICS = [
   'shuddham/#',
   MQTT_TOPICS.TDS_TELEMETRY,
   MQTT_TOPICS.TDS_TELEMETRY_ALT,
+  MQTT_TOPICS.SUB_CONFIG,
+  MQTT_TOPICS.SUB_CONFIG_ALT,
   MQTT_TOPICS.ALL_TDS_DATA_WILDCARD,
   MQTT_TOPICS.ALL_TDS_DATA_WILDCARD_ALT,
 ];
