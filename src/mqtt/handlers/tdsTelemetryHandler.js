@@ -113,8 +113,8 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
       ? parseInt(data.tds_range, 10) 
       : (data.tdsRange !== undefined && data.tdsRange !== null ? parseInt(data.tdsRange, 10) : 90);
     
-    // TDS Rule: 990 ke above jane par 1000 treat kiya jayega
-    if (tdsRange > 990) {
+    // TDS Rule: 991 ya above hone par 1000 treat kiya jayega
+    if (tdsRange >= 991) {
       tdsRange = 1000;
     }
     
@@ -170,7 +170,7 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
 ║ ⏱️ Hardware Ts      : ${ts} (Received: ${nowKolkata})
 ║ 💧 Pure TDS (tds2)  : ${finalTds2} PPM
 ║ 💧 Raw TDS (tds1)   : ${finalTds1} PPM
-║ 🎯 Target TDS Limit : ${tdsRange} PPM ${tdsRange === 1000 ? '(Rule applied: > 990 -> 1000)' : ''}
+║ 🎯 Target TDS Limit : ${tdsRange} PPM ${tdsRange === 1000 ? '(Rule applied: 991 or above -> 1000)' : ''}
 ║ 🌀 Cooling Fan Relay: ${fan.toUpperCase()}
 ║ 🌡️ Water Temperature: ${finalTemp}°C | Mode: ${finalMode}
 ║ 📮 MQTT Topic       : ${topic}

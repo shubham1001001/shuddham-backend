@@ -69,7 +69,7 @@ export function normalizeFanState(raw) {
 export function normalizeTdsRange(raw) {
   let val = parseInt(raw, 10);
   if (isNaN(val) || val < 50) val = 90;
-  if (val > 990) val = 1000;
+  if (val >= 991) val = 1000;
   return val;
 }
 
@@ -236,7 +236,7 @@ export async function publishMqttCommand(req, res) {
     const preTMatch = msgStr.match(/T\s*,\s*(\d+)/i);
     if (preTMatch) {
       let tVal = parseInt(preTMatch[1], 10);
-      if (tVal > 990) {
+      if (tVal >= 991) {
         tVal = 1000;
         finalMessage = typeof message === 'object'
           ? { ...message, command: `T,${tVal}`, tds: tVal, tds_range: tVal }
@@ -263,7 +263,7 @@ export async function publishMqttCommand(req, res) {
 
     const rawTdsFromMsg = typeof message === 'object' ? (message.tds_range ?? message.tdsRange ?? message.tds) : null;
     let dynamicTdsRange = rawTdsFromMsg !== null && rawTdsFromMsg !== undefined ? Number(rawTdsFromMsg) : null;
-    if (dynamicTdsRange !== null && dynamicTdsRange > 990) {
+    if (dynamicTdsRange !== null && dynamicTdsRange >= 991) {
       dynamicTdsRange = 1000;
     }
 
@@ -346,7 +346,7 @@ export async function sendDeviceCommand(req, res) {
 ╔══════════════════════════════════════════════════════════════════
 ║ 🚀 [DEVICE COMMAND DISPATCH] • ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
 ║ 🎯 Device ID    : ${deviceId}
-║ 💬 Command      : "${command}" ${targetTds !== null ? `(Target TDS: ${targetTds} PPM${targetTds === 1000 ? ' - Snapped because > 990' : ''})` : ''}
+║ 💬 Command      : "${command}" ${targetTds !== null ? `(Target TDS: ${targetTds} PPM${targetTds === 1000 ? ' - Snapped because >= 991' : ''})` : ''}
 ║ 📮 Target Topic : ${topic}
 ╚══════════════════════════════════════════════════════════════════`);
 
@@ -403,8 +403,8 @@ export async function sendTdsCommand(req, res) {
       tdsValue = parseInt(rawTds, 10);
     }
 
-    // TDS Rule: 990 ke above jane par value automatically 1000 ho jayegi MQTT server ke liye
-    if (tdsValue > 990) {
+    // TDS Rule: 991 ya above hone par value automatically 1000 ho jayegi MQTT server ke liye
+    if (tdsValue >= 991) {
       tdsValue = 1000;
     }
 
