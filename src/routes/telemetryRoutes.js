@@ -44,7 +44,13 @@ router.post('/:devId/subconfig', sendTdsCommand);
 // GET /api/telemetry/:devId/latest - Get latest telemetry for a device
 router.get('/:devId/latest', getDeviceLatestTelemetry);
 
-// GET /api/telemetry/:devId - Get historical telemetry logs
+// GET /api/telemetry - Get historical telemetry logs (all devices or with ?devId query)
+router.get('/', getDeviceTelemetryHistory);
+
+// GET /api/telemetry/history - Explicit history endpoint
+router.get('/history', getDeviceTelemetryHistory);
+
+// GET /api/telemetry/:devId - Get historical telemetry logs for a specific device
 router.get('/:devId', getDeviceTelemetryHistory);
 
 export default router;

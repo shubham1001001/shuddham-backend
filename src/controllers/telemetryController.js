@@ -149,18 +149,40 @@ export async function getDeviceLatestTelemetry(req, res) {
  */
 export async function getDeviceTelemetryHistory(req, res) {
   try {
-    const { devId } = req.params;
-    const limit = Math.min(Number(req.query.limit) || 100, 1000);
-    const offset = Number(req.query.offset) || 0;
+    let rawDevId = req.params.devId || req.query.devId || req.query.deviceId || req.query.dev_id || '';
+    let devId = rawDevId.trim();
+
+    if (devId.toLowerCase() === 'history' || devId.toLowerCase() === 'all' || !devId) {
+      devId = '';
+    } else {
+      devId = normalizeHardwareDevId(devId);
+    }
+
+    let limit = Number(req.query.limit);
+    if (req.query.limit === 'all' || req.query.all === 'true') {
+      limit = 50000;
+    } else if (isNaN(limit) || limit <= 0) {
+      limit = 100;
+    } else {
+      limit = Math.min(limit, 50000);
+    }
+
+    const offset = Math.max(0, Number(req.query.offset) || 0);
 
     const { rows, total } = await TelemetryRepository.getHistoryByDeviceId(devId, limit, offset);
 
+    const formattedRows = rows.map((r) => ({
+      ...r,
+      ts: formatToDayMonthYear(r.ts)
+    }));
+
     res.json({
       success: true,
-      data: rows,
+      data: formattedRows,
       total,
       limit,
-      offset
+      offset,
+      deviceId: devId || 'all'
     });
   } catch (err) {
     res.status(500).json({

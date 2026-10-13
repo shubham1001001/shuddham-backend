@@ -112,18 +112,23 @@ export class TelemetryRepository {
   }
 
   /**
-   * Get historical telemetry logs for a specific device with pagination
+   * Get historical telemetry logs for a specific device with pagination, or all devices if devId is empty/'all'
    */
   static async getHistoryByDeviceId(devId, limit = 100, offset = 0) {
-    const rows = await query(
-      `SELECT * FROM device_telemetry WHERE dev_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [devId, limit, offset]
-    );
+    const isAll = !devId || devId.toLowerCase() === 'all';
+    const rows = isAll
+      ? await query(
+          `SELECT * FROM device_telemetry ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+          [limit, offset]
+        )
+      : await query(
+          `SELECT * FROM device_telemetry WHERE dev_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+          [devId, limit, offset]
+        );
 
-    const countRes = await query(
-      `SELECT COUNT(*) as total FROM device_telemetry WHERE dev_id = ?`,
-      [devId]
-    );
+    const countRes = isAll
+      ? await query(`SELECT COUNT(*) as total FROM device_telemetry`)
+      : await query(`SELECT COUNT(*) as total FROM device_telemetry WHERE dev_id = ?`, [devId]);
 
     return {
       rows,
