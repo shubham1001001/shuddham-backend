@@ -85,16 +85,8 @@ export async function getLatestDevicesTelemetry(req, res) {
       ts: formatToDayMonthYear(r.ts)
     }));
 
-    const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const formattedDate = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-    console.log(`
-╔══════════════════════════════════════════════════════════════════
-║ 📱 [MOBILE TELEMETRY POLL] • ${nowKolkata} (${formattedDate})
-║ 🌐 Client IP       : ${clientIp}
-${formatted.map(f => `║ 🆔 Dev ${f.dev_id} | ☁️ Backend Hardware Ts: ${f.ts} | TDS: ${f.tds1 || '--'}/${f.tds2 || '--'} | Fan: ${f.fan || '--'}`).join('\n')}
-╚══════════════════════════════════════════════════════════════════`);
+    // Quiet logging for regular polling to keep PM2 terminal clean
+    // console.log(`[Poll] ${clientIp} -> ${formatted.length} devices`);
 
     res.json({
       success: true,
@@ -469,14 +461,14 @@ export async function sendTdsCommand(req, res) {
 
     console.log(`
 ╔══════════════════════════════════════════════════════════════════
-║ 💧 [MQTT SUBCONFIG PUBLISHED] • ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
-║ 📮 Topic       : ${subConfigTopic}
-║ 📦 JSON Payload: ${JSON.stringify(subConfigPayload)}
-║ 🎯 Device ID   : ${devId}
-║ 🎚️ TDS Range   : ${tdsValue} PPM ${Number(rawTds) > 990 ? '(Snapped to 1000 PPM because > 990)' : ''}
-║ 🌀 Fan State   : ${fanState}
-║ 💬 Command     : "${command}"
-║ 📡 MQTT Status : ${mqttPublished ? '✅ Published to AWS IoT Broker' : '⚠️ Offline/Error: ' + mqttError}
+║ 📤 [COMMAND DISPATCHED TO PURIFIER] • ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}
+║ 🎯 Target Device   : ${devId}
+║ 💧 Target TDS Limit : ${tdsValue} PPM
+║ 🌀 Cooling Fan State: ${fanState.toUpperCase()}
+║ 💬 Raw Command     : "${command}"
+║ 📮 MQTT Topic      : ${subConfigTopic}
+║ 📡 AWS MQTT Broker : ${mqttPublished ? '✅ Published Successfully' : '⚠️ Publish Failed: ' + mqttError}
+║ ℹ️ DB Update Policy: Awaiting hardware confirmation packet before DB save
 ╚══════════════════════════════════════════════════════════════════`);
 
     return res.json({

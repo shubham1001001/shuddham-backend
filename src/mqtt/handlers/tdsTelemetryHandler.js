@@ -165,17 +165,16 @@ export async function handleTdsTelemetry(topic, rawBuffer) {
     const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
     console.log(`
 ╔══════════════════════════════════════════════════════════════════
-║ 📥 [HARDWARE TELEMETRY RECEIVED - DB UPDATED] • ${nowKolkata}
-║ 🎯 Device ID       : ${devId}
-║ 📱 Received At     : ${nowKolkata} (Live Hardware Telemetry)
-║ ☁️ Backend Prev Ts : ${existing?.ts || 'No prior snapshot'}
-║ ⏱️ Fresh Saved Ts  : ${ts}
-║ 💧 TDS Range       : ${tdsRange} PPM ${tdsRange === 1000 ? '(Rule applied: > 990 -> 1000)' : ''}
-║ 🌀 Fan State       : ${fan}
-║ 💧 TDS1 / TDS2     : ${finalTds1} PPM / ${finalTds2} PPM
-║ 🌡️ Temp            : ${finalTemp}°C | Mode: ${finalMode}
-║ 📮 Topic           : ${topic}
-║ 💾 DB Snapshot     : ✅ Updated with confirmed hardware state
+║ 📥 [HARDWARE UPLINK RECEIVED -> DB UPDATED] • ${nowKolkata}
+║ 🎯 Device ID        : ${devId}
+║ ⏱️ Hardware Ts      : ${ts} (Received: ${nowKolkata})
+║ 💧 Pure TDS (tds2)  : ${finalTds2} PPM
+║ 💧 Raw TDS (tds1)   : ${finalTds1} PPM
+║ 🎯 Target TDS Limit : ${tdsRange} PPM ${tdsRange === 1000 ? '(Rule applied: > 990 -> 1000)' : ''}
+║ 🌀 Cooling Fan Relay: ${fan.toUpperCase()}
+║ 🌡️ Water Temperature: ${finalTemp}°C | Mode: ${finalMode}
+║ 📮 MQTT Topic       : ${topic}
+║ 💾 DB Saved Tables  : ✅ device_latest_telemetry (State) & device_telemetry (History)
 ╚══════════════════════════════════════════════════════════════════`);
 
 
