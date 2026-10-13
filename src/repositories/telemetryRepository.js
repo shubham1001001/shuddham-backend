@@ -118,11 +118,11 @@ export class TelemetryRepository {
     const isAll = !devId || devId.toLowerCase() === 'all';
     const rows = isAll
       ? await query(
-          `SELECT * FROM device_telemetry ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+          `SELECT * FROM device_telemetry ORDER BY id DESC LIMIT ? OFFSET ?`,
           [limit, offset]
         )
       : await query(
-          `SELECT * FROM device_telemetry WHERE dev_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+          `SELECT * FROM device_telemetry WHERE dev_id = ? ORDER BY id DESC LIMIT ? OFFSET ?`,
           [devId, limit, offset]
         );
 
