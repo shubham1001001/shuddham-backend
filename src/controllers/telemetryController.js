@@ -256,132 +256,17 @@ export async function publishMqttCommand(req, res) {
     const isFanEnable = msgStr.includes('F,1') || msgStr.toLowerCase().includes('"fan":"enable"') || msgStr.toLowerCase().includes('"fan": "enable"') || (typeof message === 'object' && message.fan === 'enable');
     const isFanDisable = msgStr.includes('F,0') || msgStr.toLowerCase().includes('"fan":"disable"') || msgStr.toLowerCase().includes('"fan": "disable"') || (typeof message === 'object' && message.fan === 'disable');
 
-    if (isSubConfig || dynamicTdsRange !== null || isFanEnable || isFanDisable) {
-      const existing = await TelemetryRepository.getLatestByDeviceId(subDevId);
-      const fanState = isFanDisable ? 'disable' : (isFanEnable ? 'enable' : (existing?.fan || 'enable'));
-      const finalTdsRange = dynamicTdsRange !== null ? dynamicTdsRange : (existing?.tds_range || 90);
-
-      deviceStateService.setFanState(subDevId, fanState);
-
-      const temp = existing?.temp ? Number(existing.temp) : 25.0;
-      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : 58;
-      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 52;
-      const mode = existing?.mode || 'NF';
-
-      const d = new Date();
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).formatToParts(d);
-      const getP = (type) => parts.find(p => p.type === type)?.value;
-      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
-
-      const updatedRecord = {
-        devId: subDevId,
-        ts,
-        status: 'online',
-        temp,
-        tds1,
-        tds2,
-        mode,
-        tdsRange: finalTdsRange,
-        fan: fanState,
-        topic,
-        rawPayload: JSON.stringify(typeof message === 'object' ? message : { dev_Id: subDevId, message })
-      };
-
-      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
-      await TelemetryRepository.insertHistoricalLog(updatedRecord);
-
-      const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-      console.log(`
+    // Command published to MQTT broker.
+    // Database is NOT updated here — DB is only updated when hardware sends actual telemetry response back!
+    const nowKolkata = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+    console.log(`
 ╔══════════════════════════════════════════════════════════════════
 ║ 📤 [DYNAMIC API MQTT DISPATCH] • ${nowKolkata}
-║ 🎯 Target Dev   : ${subDevId} (Dynamic from Mobile)
-║ 💧 TDS Range    : ${finalTdsRange} PPM ${finalTdsRange === 1000 ? '(Rule applied: > 990 -> 1000)' : ''}
-║ 🌀 Fan State    : ${fanState}
+║ 🎯 Target Dev   : ${subDevId}
 ║ 📮 Target Topic : ${topic}
 ║ 📦 JSON Payload : ${JSON.stringify(message)}
-║ 💾 DB Snapshot  : Updated
+║ ⏳ DB Status    : Awaiting hardware telemetry response (No premature DB update)
 ╚══════════════════════════════════════════════════════════════════`);
-    }
-
-    // If this was a TDS target command (e.g. T,90 or T,1000)
-    const tMatch = msgStr.match(/T\s*,\s*(\d+)/i);
-    if (tMatch) {
-      let targetTds = parseInt(tMatch[1], 10);
-      if (targetTds > 990) {
-        targetTds = 1000;
-      }
-      let devId = 'unknown';
-      if (typeof message === 'object' && (message.dev_Id || message.dev_id || message.devId)) {
-        devId = (message.dev_Id || message.dev_id || message.devId).toString().trim();
-      } else if (topic) {
-        const parts = topic.split('/');
-        for (const p of parts) {
-          if (p && p.length >= 6 && !['shuddham', 'shudhham', 'devices', 'telemetry', 'data', 'v1', 'tds', 'cmd', 'command'].includes(p.toLowerCase())) {
-            devId = p;
-            break;
-          }
-        }
-      }
-
-      console.log(`[Telemetry API] Received TDS command "${msgStr}" (target: ${targetTds} PPM) for device ${devId}`);
-      const existing = await TelemetryRepository.getLatestByDeviceId(devId);
-      const temp = existing?.temp ? Number(existing.temp) : 25.0;
-      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : targetTds;
-      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
-      const mode = existing?.mode || 'RO';
-      const fanState = existing?.fan || 'enable';
-
-      const d = new Date();
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).formatToParts(d);
-      const getP = (type) => parts.find(p => p.type === type)?.value;
-      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
-
-      const updatedRecord = {
-        devId,
-        ts,
-        status: 'online',
-        temp,
-        tds1,
-        tds2,
-        mode,
-        tdsRange: targetTds,
-        fan: fanState,
-        topic: 'Shudhham/tds/v1/data',
-        rawPayload: JSON.stringify({
-          dev_Id: devId,
-          ts: new Date().toISOString(),
-          status: 'online',
-          temp,
-          tds1,
-          tds2,
-          mode,
-          tds_range: targetTds,
-          fan: fanState,
-          command: `T,${targetTds}`
-        })
-      };
-
-      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
-      await TelemetryRepository.insertHistoricalLog(updatedRecord);
-    }
 
     res.json({
       success: true,
@@ -440,55 +325,8 @@ export async function sendDeviceCommand(req, res) {
       await publish('Shudhham/tds/v1/SubConfig', subConfigPayload);
     } catch (_) {}
 
-    if (targetTds !== null || cmdStr.includes('F,')) {
-      const temp = existing?.temp ? Number(existing.temp) : 25.0;
-      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : effectiveTds;
-      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
-      const mode = existing?.mode || 'RO';
-      const fanState = existing?.fan || 'enable';
-
-      const d = new Date();
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).formatToParts(d);
-      const getP = (type) => parts.find(p => p.type === type)?.value;
-      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
-
-      const updatedRecord = {
-        devId: deviceId,
-        ts,
-        status: 'online',
-        temp,
-        tds1,
-        tds2,
-        mode,
-        tdsRange: targetTds,
-        fan: fanState,
-        topic: 'Shudhham/tds/v1/data',
-        rawPayload: JSON.stringify({
-          dev_Id: deviceId,
-          ts: new Date().toISOString(),
-          status: 'online',
-          temp,
-          tds1,
-          tds2,
-          mode,
-          tds_range: targetTds,
-          fan: fanState,
-          command: cmdStr
-        })
-      };
-
-      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
-      await TelemetryRepository.insertHistoricalLog(updatedRecord);
-    }
+    // Command published to MQTT broker.
+    // Database is NOT updated here — DB is only updated when hardware sends actual telemetry response back!
 
     console.log(`
 ╔══════════════════════════════════════════════════════════════════
@@ -603,48 +441,9 @@ export async function sendTdsCommand(req, res) {
       mqttError = pubErr.message;
     }
 
-    // Update real-time state and historical telemetry in database
+    // Command published to MQTT broker.
+    // Database is NOT updated here — DB is only updated when hardware sends actual telemetry response back!
     let dbUpdated = false;
-    try {
-      const temp = existing?.temp ? Number(existing.temp) : 25.0;
-      const tds1 = existing?.tds1 !== null && existing?.tds1 !== undefined ? existing.tds1 : tdsValue;
-      const tds2 = existing?.tds2 !== null && existing?.tds2 !== undefined ? existing.tds2 : 160;
-      const mode = existing?.mode || 'RO';
-
-      const d = new Date();
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).formatToParts(d);
-      const getP = (type) => parts.find(p => p.type === type)?.value;
-      const ts = `${getP('day')}/${getP('month')}/${getP('year')} ${getP('hour')}:${getP('minute')}:${getP('second')}`;
-
-      const updatedRecord = {
-        devId,
-        ts,
-        status: 'online',
-        temp,
-        tds1,
-        tds2,
-        mode,
-        tdsRange: tdsValue,
-        fan: fanState,
-        topic: subConfigTopic,
-        rawPayload: JSON.stringify(subConfigPayload)
-      };
-
-      await TelemetryRepository.upsertLatestDeviceState(updatedRecord);
-      await TelemetryRepository.insertHistoricalLog(updatedRecord);
-      dbUpdated = true;
-    } catch (dbErr) {
-      console.error('[Telemetry API] Database update error for SubConfig command:', dbErr.message);
-    }
 
     console.log(`
 ╔══════════════════════════════════════════════════════════════════
@@ -656,7 +455,6 @@ export async function sendTdsCommand(req, res) {
 ║ 🌀 Fan State   : ${fanState}
 ║ 💬 Command     : "${command}"
 ║ 📡 MQTT Status : ${mqttPublished ? '✅ Published to AWS IoT Broker' : '⚠️ Offline/Error: ' + mqttError}
-║ 💾 DB Snapshot : ${dbUpdated ? '✅ Saved in database' : '⚠️ Not updated'}
 ╚══════════════════════════════════════════════════════════════════`);
 
     return res.json({
