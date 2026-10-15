@@ -51,6 +51,15 @@ async function deleteCategoryFromDb(id) {
   }
 }
 
+// Helper to normalize phone numbers strictly to 10 digits
+const normalizePhone = (phoneStr) => {
+  if (!phoneStr) return '';
+  const digits = phoneStr.toString().replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) return digits.substring(2);
+  if (digits.length === 11 && digits.startsWith('0')) return digits.substring(1);
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 /**
  * Async Inventory Loader (Pure MySQL)
  */
@@ -58,6 +67,30 @@ async function loadInventory() {
   if (isMySQLActive()) {
     try {
       const rows = await query('SELECT * FROM `inventory` ORDER BY `created_at` DESC');
+
+      // Fetch latest users profile to dynamically enrich customer assignments
+      let userList = [];
+      try {
+        userList = await query('SELECT id, full_name, email, phone, city FROM users');
+      } catch (uErr) {
+        console.warn('[Inventory DB] Users query note:', uErr.message);
+      }
+
+      const userById = new Map();
+      const userByPhone = new Map();
+      const userByEmail = new Map();
+
+      for (const u of userList) {
+        if (u.id) userById.set(String(u.id).trim(), u);
+        if (u.phone) {
+          const norm = normalizePhone(u.phone);
+          if (norm) userByPhone.set(norm, u);
+        }
+        if (u.email) {
+          userByEmail.set(u.email.trim().toLowerCase(), u);
+        }
+      }
+
       return rows.map(r => {
         let availableSerials = [];
         let assignments = [];
@@ -67,6 +100,62 @@ async function loadInventory() {
         try {
           if (r.assignments) assignments = typeof r.assignments === 'string' ? JSON.parse(r.assignments) : r.assignments;
         } catch (e) { assignments = []; }
+
+        // Live enrichment of customer details from users profile
+        let itemAssignmentsChanged = false;
+        if (Array.isArray(assignments) && assignments.length > 0) {
+          assignments.forEach(asgn => {
+            let matchedUser = null;
+            if (asgn.customerId && userById.has(String(asgn.customerId).trim())) {
+              matchedUser = userById.get(String(asgn.customerId).trim());
+            } else if (asgn.customerPhone) {
+              const norm = normalizePhone(asgn.customerPhone);
+              if (norm && userByPhone.has(norm)) {
+                matchedUser = userByPhone.get(norm);
+              }
+            } else if (asgn.customerEmail) {
+              const emailKey = asgn.customerEmail.trim().toLowerCase();
+              if (userByEmail.has(emailKey)) {
+                matchedUser = userByEmail.get(emailKey);
+              }
+            }
+
+            if (matchedUser) {
+              const latestName = (matchedUser.full_name || matchedUser.name || '').trim();
+              const latestPhone = (matchedUser.phone || '').trim();
+              const latestEmail = (matchedUser.email || '').trim();
+              const latestCity = (matchedUser.city || matchedUser.address || '').trim();
+
+              if (latestName && asgn.customerName !== latestName) {
+                asgn.customerName = latestName;
+                itemAssignmentsChanged = true;
+              }
+              if (latestPhone && asgn.customerPhone !== latestPhone) {
+                asgn.customerPhone = latestPhone;
+                itemAssignmentsChanged = true;
+              }
+              if (latestEmail && asgn.customerEmail !== latestEmail) {
+                asgn.customerEmail = latestEmail;
+                itemAssignmentsChanged = true;
+              }
+              if (latestCity && (!asgn.installationAddress || asgn.installationAddress.toLowerCase() === 'xyx' || asgn.installationAddress.trim().length <= 3)) {
+                asgn.installationAddress = latestCity;
+                itemAssignmentsChanged = true;
+              }
+              if (!asgn.customerId && matchedUser.id) {
+                asgn.customerId = matchedUser.id;
+                itemAssignmentsChanged = true;
+              }
+            }
+          });
+        }
+
+        // Asynchronously update this row in inventory table so MySQL remains persisted with latest details
+        if (itemAssignmentsChanged) {
+          query('UPDATE `inventory` SET `assignments` = ? WHERE `id` = ?', [JSON.stringify(assignments), r.id]).catch(e => {
+            console.error('[Inventory DB] Sync update error:', e.message);
+          });
+        }
 
         return {
           id: r.id,
@@ -971,15 +1060,6 @@ export const unassignDevice = async (req, res) => {
     console.error('[UnassignDevice Error]', err);
     res.status(500).json({ success: false, message: 'Server error unassigning device', error: err.message });
   }
-};
-
-// Helper to normalize phone numbers strictly to 10 digits
-const normalizePhone = (phoneStr) => {
-  if (!phoneStr) return '';
-  const digits = phoneStr.toString().replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) return digits.substring(2);
-  if (digits.length === 11 && digits.startsWith('0')) return digits.substring(1);
-  return digits.length > 10 ? digits.slice(-10) : digits;
 };
 
 // Helper to clean MAC address / device IDs for consistent matching

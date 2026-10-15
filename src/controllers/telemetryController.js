@@ -2,6 +2,7 @@ import { TelemetryRepository } from '../repositories/telemetryRepository.js';
 import { getMqttStatus, publish } from '../mqtt/index.js';
 import { handleTdsTelemetry } from '../mqtt/handlers/tdsTelemetryHandler.js';
 import { deviceStateService } from '../services/deviceStateService.js';
+import { query } from '../config/db.js';
 
 function formatToDayMonthYear(raw) {
   if (!raw) return raw;
@@ -75,18 +76,53 @@ export function normalizeTdsRange(raw) {
 
 /**
  * GET /api/telemetry/latest
- * Get all latest device telemetry states
+ * Get all latest device telemetry states (filtered by admin assignment if not superadmin)
  */
 export async function getLatestDevicesTelemetry(req, res) {
   try {
-    const rows = await TelemetryRepository.getAllLatest();
+    const { adminId, adminEmail, role } = req.query;
+    const isSuper = role === 'Super Admin' || (adminEmail && String(adminEmail).toLowerCase().includes('superadmin'));
+
+    let rows = await TelemetryRepository.getAllLatest();
+
+    // If an admin (not Super Admin) queries, only return telemetry for devices assigned to them
+    if (!isSuper && (adminId || adminEmail)) {
+      try {
+        const invRows = await query('SELECT assignments FROM inventory');
+        const assignedSerials = new Set();
+        (invRows || []).forEach(inv => {
+          let list = [];
+          if (typeof inv.assignments === 'string') {
+            try { list = JSON.parse(inv.assignments); } catch (e) { list = []; }
+          } else if (Array.isArray(inv.assignments)) {
+            list = inv.assignments;
+          }
+          list.forEach(a => {
+            const matchesAdmin =
+              (adminId && String(a.adminId).trim() === String(adminId).trim()) ||
+              (adminEmail && String(a.adminEmail).trim().toLowerCase() === String(adminEmail).trim().toLowerCase());
+            if (matchesAdmin && a.serialNumber) {
+              const raw = String(a.serialNumber).trim().toLowerCase();
+              assignedSerials.add(raw);
+              assignedSerials.add(raw.replace(/[^a-z0-9]/g, ''));
+            }
+          });
+        });
+
+        rows = rows.filter(r => {
+          const rDev = String(r.dev_id || '').trim().toLowerCase();
+          const rClean = rDev.replace(/[^a-z0-9]/g, '');
+          return assignedSerials.has(rDev) || assignedSerials.has(rClean);
+        });
+      } catch (e) {
+        console.warn('[Telemetry] Error filtering telemetry by admin assignments:', e.message);
+      }
+    }
+
     const formatted = rows.map((r) => ({
       ...r,
       ts: formatToDayMonthYear(r.ts)
     }));
-
-    // Quiet logging for regular polling to keep PM2 terminal clean
-    // console.log(`[Poll] ${clientIp} -> ${formatted.length} devices`);
 
     res.json({
       success: true,

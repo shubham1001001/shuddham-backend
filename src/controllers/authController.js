@@ -650,6 +650,50 @@ export const updateMe = async (req, res) => {
           SET full_name = ?, email = ?, phone = ?, city = ?
           WHERE id = ?
         `, [user.fullName || user.full_name, user.email, user.phone, user.city, user.id]);
+
+        // Dynamically sync customer profile changes into inventory assignments
+        try {
+          const invRows = await query('SELECT id, assignments FROM inventory WHERE assignments IS NOT NULL');
+          for (const row of invRows) {
+            let asgns = [];
+            try {
+              asgns = typeof row.assignments === 'string' ? JSON.parse(row.assignments) : row.assignments;
+            } catch (e) { continue; }
+            if (!Array.isArray(asgns) || asgns.length === 0) continue;
+
+            let changed = false;
+            for (const a of asgns) {
+              const matchId = a.customerId && String(a.customerId).trim() === String(user.id).trim();
+              const matchPhone = a.customerPhone && normalizePhone(a.customerPhone) === normalizePhone(user.phone);
+              const matchEmail = a.customerEmail && user.email && a.customerEmail.trim().toLowerCase() === user.email.trim().toLowerCase();
+
+              if (matchId || matchPhone || matchEmail) {
+                if (user.fullName || user.full_name) {
+                  a.customerName = user.fullName || user.full_name;
+                }
+                if (user.phone) {
+                  a.customerPhone = user.phone;
+                }
+                if (user.email) {
+                  a.customerEmail = user.email;
+                }
+                if (user.city && (!a.installationAddress || a.installationAddress.toLowerCase() === 'xyx' || a.installationAddress.trim().length <= 3)) {
+                  a.installationAddress = user.city;
+                }
+                if (!a.customerId) {
+                  a.customerId = user.id;
+                }
+                changed = true;
+              }
+            }
+
+            if (changed) {
+              await query('UPDATE inventory SET assignments = ? WHERE id = ?', [JSON.stringify(asgns), row.id]);
+            }
+          }
+        } catch (invSyncErr) {
+          console.warn('[AuthController] Inventory sync error on updateMe:', invSyncErr.message);
+        }
       } catch (e) {
         console.warn('[AuthController] MySQL updateMe warning:', e.message);
       }
