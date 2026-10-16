@@ -1520,6 +1520,191 @@ export const getCustomerDevices = async (req, res) => {
 };
 
 /**
+ * Self-claim or pair a device directly by customer (Self-Provisioning / Claiming)
+ * @route   POST /api/customer/devices/claim
+ */
+export const claimCustomerDevice = async (req, res) => {
+  try {
+    let customerId = (req.body.customerId || req.query.customerId || req.query.userId || '').toString().trim();
+    let phone = (req.body.phone || req.query.phone || '').toString().trim();
+    let email = (req.body.email || req.query.email || '').toString().trim().toLowerCase();
+    let customerName = (req.body.customerName || '').toString().trim();
+    const serialNumber = (req.body.serialNumber || req.body.deviceId || req.body.macAddress || '').toString().trim();
+    const deviceName = (req.body.deviceName || req.body.name || '').toString().trim();
+    const location = (req.body.location || req.body.address || '').toString().trim();
+
+    if (!serialNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Device serial number or MAC address is required to claim device.'
+      });
+    }
+
+    // 1. Extract from JWT if present
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const parts = token.split('.');
+      if (parts.length >= 2) {
+        try {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          if (!customerId && (payload.userId || payload.id)) {
+            customerId = payload.userId || payload.id;
+          }
+          if (!phone && payload.phone) {
+            phone = payload.phone;
+          }
+          if (!email && (payload.email || payload.userEmail)) {
+            email = (payload.email || payload.userEmail).toString().trim().toLowerCase();
+          }
+          if (!customerName && (payload.name || payload.fullName || payload.full_name)) {
+            customerName = payload.name || payload.fullName || payload.full_name;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. Resolve user from MySQL if available
+    if (customerId && (!phone || !customerName) && isMySQLActive()) {
+      try {
+        const uRows = await query('SELECT full_name, phone, email, city FROM users WHERE id = ? LIMIT 1', [customerId]);
+        if (uRows && uRows.length > 0) {
+          if (!customerName) customerName = uRows[0].full_name || '';
+          if (!phone) phone = uRows[0].phone || '';
+          if (!email) email = uRows[0].email || '';
+        }
+      } catch (_) {}
+    }
+
+    if ((phone || email) && !customerId && isMySQLActive()) {
+      try {
+        let uRows = [];
+        if (phone) {
+          const cleanDigits = phone.replace(/\D/g, '').slice(-10);
+          if (cleanDigits.length >= 10) {
+            uRows = await query('SELECT id, full_name, phone, email, city FROM users WHERE phone LIKE ? LIMIT 1', [`%${cleanDigits}`]);
+          }
+        }
+        if ((!uRows || uRows.length === 0) && email) {
+          uRows = await query('SELECT id, full_name, phone, email, city FROM users WHERE LOWER(email) = ? LIMIT 1', [email.toLowerCase()]);
+        }
+        if (uRows && uRows.length > 0) {
+          if (!customerId) customerId = uRows[0].id;
+          if (!customerName) customerName = uRows[0].full_name || '';
+          if (!phone) phone = uRows[0].phone || '';
+          if (!email) email = uRows[0].email || '';
+        }
+      } catch (_) {}
+    }
+
+    const cleanPhone = normalizePhone(phone);
+    if (!customerId && cleanPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid user authentication or phone number is required to claim a device.'
+      });
+    }
+
+    const resolvedCustomerId = customerId || `usr-${cleanPhone}`;
+    const resolvedCustomerName = customerName || 'Customer';
+
+    const items = await loadInventory();
+    const targetSerialUpper = serialNumber.toUpperCase();
+    const targetSerialClean = cleanMac(serialNumber);
+
+    let assignedItem = null;
+    let existingAssignment = null;
+
+    // Search if this serial is already in assignments of an inventory item
+    for (const item of items) {
+      if (Array.isArray(item.assignments)) {
+        const asgn = item.assignments.find(a => {
+          const aSerial = (a.serialNumber || '').toUpperCase();
+          return aSerial === targetSerialUpper || cleanMac(aSerial) === targetSerialClean;
+        });
+        if (asgn) {
+          existingAssignment = asgn;
+          assignedItem = item;
+          break;
+        }
+      }
+    }
+
+    const now = new Date();
+    const warrantyEnd = new Date(now);
+    warrantyEnd.setFullYear(warrantyEnd.getFullYear() + 1);
+
+    if (existingAssignment && assignedItem) {
+      existingAssignment.customerId = resolvedCustomerId;
+      existingAssignment.customerName = resolvedCustomerName;
+      existingAssignment.customerPhone = cleanPhone;
+      existingAssignment.customerEmail = email || existingAssignment.customerEmail || '';
+      existingAssignment.installationAddress = location || existingAssignment.installationAddress || '';
+      existingAssignment.installedAt = existingAssignment.installedAt || now.toISOString();
+      existingAssignment.status = 'Installed';
+      await saveInventoryItem(assignedItem);
+    } else {
+      let targetItem = items.find(i => 
+        Array.isArray(i.availableSerials) && 
+        i.availableSerials.some(s => s.toUpperCase() === targetSerialUpper || cleanMac(s) === targetSerialClean)
+      );
+
+      if (!targetItem) {
+        targetItem = items.find(i => (i.category || '').toLowerCase().includes('ro') || (i.name || '').toLowerCase().includes('shuddham')) || items[0];
+      }
+
+      if (targetItem) {
+        if (!Array.isArray(targetItem.availableSerials)) targetItem.availableSerials = [];
+        if (!Array.isArray(targetItem.assignments)) targetItem.assignments = [];
+
+        const sIdx = targetItem.availableSerials.findIndex(s => s.toUpperCase() === targetSerialUpper || cleanMac(s) === targetSerialClean);
+        if (sIdx !== -1) {
+          targetItem.availableSerials.splice(sIdx, 1);
+        }
+        targetItem.stockQuantity = Math.max(0, targetItem.stockQuantity - 1);
+
+        const newAsgn = {
+          id: `asgn-claim-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+          adminId: 'self-claimed',
+          adminName: 'Self Provisioned by Customer',
+          adminEmail: '',
+          quantity: 1,
+          serialNumber: serialNumber,
+          customerId: resolvedCustomerId,
+          customerName: resolvedCustomerName,
+          customerPhone: cleanPhone,
+          customerEmail: email || '',
+          installationAddress: location || 'Customer Home',
+          assignedDate: now.toISOString(),
+          installedAt: now.toISOString(),
+          warrantyUntil: warrantyEnd.toISOString(),
+          warrantyMonths: 12,
+          status: 'Installed',
+          note: `Claimed directly via Mobile App (${deviceName || 'Purifier'})`
+        };
+
+        targetItem.assignments.push(newAsgn);
+        await saveInventoryItem(targetItem);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Purifier successfully claimed and assigned to your account.',
+      data: {
+        serialNumber,
+        customerId: resolvedCustomerId,
+        customerPhone: cleanPhone,
+        status: 'Installed'
+      }
+    });
+  } catch (err) {
+    console.error('[ClaimCustomerDevice Error]', err);
+    return res.status(500).json({ success: false, message: 'Server error claiming device', error: err.message });
+  }
+};
+
+/**
  * Get all devices in an Admin's custody
  * Returns both unassigned (in custody) and installed devices.
  */

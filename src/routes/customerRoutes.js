@@ -1,6 +1,6 @@
 import express from 'express';
 import { getCustomerBookings } from '../controllers/bookingsController.js';
-import { getCustomerDevices } from '../controllers/inventoryController.js';
+import { getCustomerDevices, claimCustomerDevice } from '../controllers/inventoryController.js';
 import addressesRoutes from './addressesRoutes.js';
 
 const router = express.Router();
@@ -18,6 +18,13 @@ router.get('/bookings', getCustomerBookings);
  * @access  Private (Bearer token or ?phone=...)
  */
 router.get('/devices', getCustomerDevices);
+
+/**
+ * @route   POST /api/customer/devices/claim
+ * @desc    Self-claim or pair a device directly by customer (Self-Provisioning)
+ * @access  Private (Bearer token or ?phone=...)
+ */
+router.post('/devices/claim', claimCustomerDevice);
 
 /**
  * @route   /api/customer/addresses
