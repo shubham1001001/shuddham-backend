@@ -136,8 +136,8 @@ export async function getCreatedAdmins() {
           phone: r.phone ? normalizePhone(r.phone) : '',
           specialization: (r.role || '').toLowerCase() === 'technician' ? 'Field Technician' : (r.role === 'Super Admin' ? 'Master Authority' : 'Administrator'),
           role: r.role || 'Technician',
-          location: r.city || 'Operations HQ',
-          city: r.city || 'Operations HQ',
+          location: r.city || '',
+          city: r.city || '',
           status: r.is_active === 0 ? 'Inactive' : 'Active',
           createdAt: r.created_at
         }));
@@ -157,8 +157,8 @@ export async function getCreatedAdmins() {
       phone: u.phone ? normalizePhone(u.phone) : '',
       specialization: (u.role || '').toLowerCase() === 'technician' ? 'Field Technician' : (u.role === 'Super Admin' ? 'Master Authority' : 'Administrator'),
       role: u.role || 'Technician',
-      location: u.city || u.location || 'Operations HQ',
-      city: u.city || u.location || 'Operations HQ',
+      location: u.city || u.location || '',
+      city: u.city || u.location || '',
       status: u.status || 'Active',
       createdAt: u.createdAt
     }));
@@ -374,8 +374,8 @@ export async function getAllUsersFromDatabase() {
           email: r.email,
           phone: r.phone ? normalizePhone(r.phone) : '',
           role: r.role || 'Customer',
-          location: r.city || 'Operations HQ',
-          city: r.city || 'Operations HQ',
+          location: r.city || '',
+          city: r.city || '',
           status: r.is_active === 0 ? 'Inactive' : 'Active',
           createdAt: r.created_at,
           updatedAt: r.updated_at
@@ -393,8 +393,8 @@ export async function getAllUsersFromDatabase() {
     email: u.email,
     phone: u.phone ? normalizePhone(u.phone) : '',
     role: u.role || 'Customer',
-    location: u.city || u.location || 'Operations HQ',
-    city: u.city || u.location || 'Operations HQ',
+    location: u.city || u.location || '',
+    city: u.city || u.location || '',
     status: u.status || 'Active',
     createdAt: u.createdAt,
     updatedAt: u.updatedAt

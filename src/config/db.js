@@ -64,7 +64,7 @@ export async function initDatabase() {
         \`phone\` VARCHAR(20) DEFAULT NULL UNIQUE,
         \`password\` VARCHAR(255) NOT NULL,
         \`role\` VARCHAR(50) NOT NULL DEFAULT 'Customer',
-        \`city\` VARCHAR(100) DEFAULT 'Operations HQ',
+        \`city\` VARCHAR(100) DEFAULT '',
         \`token\` VARCHAR(500) DEFAULT NULL,
         \`is_active\` TINYINT(1) DEFAULT 1,
         \`last_login\` TIMESTAMP NULL DEFAULT NULL,

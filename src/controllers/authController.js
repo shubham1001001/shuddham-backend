@@ -956,8 +956,8 @@ export const getAllUsersDirectory = async (req, res) => {
       phone: r.phone ? normalizePhone(r.phone) : '',
       role: r.role || 'Customer',
       specialization: r.role === 'Super Admin' ? 'Master Authority' : (r.role === 'Admin' ? 'Administrator' : 'Customer'),
-      city: r.city || 'Operations HQ',
-      location: r.city || 'Operations HQ',
+      city: r.city || '',
+      location: r.city || '',
       status: r.is_active === 0 ? 'Inactive' : 'Active',
       createdAt: r.created_at || r.createdAt
     }));
