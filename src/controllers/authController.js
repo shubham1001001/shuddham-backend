@@ -638,7 +638,7 @@ export const updateMe = async (req, res) => {
     }
     if (cleanPhone) user.phone = cleanPhone;
     if (cleanEmail) user.email = cleanEmail;
-    if (city) user.city = city;
+    if (city !== undefined) user.city = city ? city.trim() : '';
     user.updatedAt = new Date().toISOString();
 
     saveUserToDatabase(user);
@@ -1121,11 +1121,13 @@ export const updateUser = async (req, res) => {
       else if (role === 'Super Admin') validRole = 'Super Admin';
     }
 
+    const resolvedCity = city !== undefined ? city.toString().trim() : (location !== undefined ? location.toString().trim() : undefined);
+
     const updates = {
       fullName: targetName || undefined,
       email: cleanEmail,
       phone: cleanPhone,
-      city: (city || location)?.trim(),
+      city: resolvedCity,
       password: password?.trim() || undefined,
       role: validRole,
       status: status || undefined
